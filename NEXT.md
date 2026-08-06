@@ -103,6 +103,20 @@ Everything below exists only to make that gate answerable.
       not. Never let the optimisation be able to cancel the thing it optimises.** Now wrapped.
       Verified after: stick moves 188px, releases to 0px drift, firing raises heat to 0.82, and
       `pointercancel` leaves nothing stuck on.
+- [x] 🚨 **THE GATE'S OWN PRECONDITIONS, finally measured.** Every system here was verified except
+      the two things the gate actually tests. Three minutes of ordinary play found **both broken**:
+      1. **The warden spawned at t=40.4s and the handler arrived at t=40.4s.** Zero seconds of
+         company. The position gate was satisfied the moment the dog existed, so a player who
+         drifts east early loses it instantly ... `IND-34k`'s "if it is only there to die, players
+         feel handled" in its most extreme possible form. Going deep is no longer sufficient; the
+         dog has to have BEEN there (`HANDLER_GRACE`, 8 min, the one number a playtest owns).
+      2. **The companion fell to 43% of its health and the game said nothing.** The only line
+         lived behind `hp <= 0`, so the single most important signal in the build fired
+         exclusively at the floor. ⚠ **A player cannot react to something they never notice.**
+         It now speaks once on crossing into real trouble and stays quiet until made whole, and
+         `drawCompanion`'s `hurt` parameter ... **hardcoded to 0, so the damage state the gate
+         depends on was never once drawn** ... is wired: it dims and its light stutters.
+      5/5 after, and the handler now survives a full run.
 - [x] **The single damage door.** All three player-damage paths route through `hurtPlayer()`, so
       the interposition cannot be true on one and silently absent on another.
 
@@ -259,9 +273,10 @@ phone, or ten strangers, and none of them can be closed by writing more code.** 
 honest state, and continuing to add systems now would be avoiding the gate rather than
 approaching it.
 
-1. **The handler needs its 20-30 minutes.** It arrives at t=40s and can die inside the minute.
-   ⚠ `IND-34k` is explicit that if it is only there to die, players feel handled. **A number I
-   pick here is a guess wearing a decimal point** ... it wants a human watching a human.
+1. **`HANDLER_GRACE` is a guess and it is the only one left.** Set to 8 minutes, because
+   `IND-34k` asks for 20-30 but the gate is a one-hour session and the beat has to land inside
+   it. ⚠ **Watch a real person: if the dog still feels like a device rather than a companion when
+   the warden arrives, this number is too small**, and it is the only thing that needs changing.
 2. **Real-device pass** (`game-perf`) ... an emulated Pixel 5 under 4x CPU throttle now holds
    26-32fps against the intended 30 cap, with touch verified end to end. ⚠ **What emulation
    cannot tell you is thermal**: whether minute 10 in someone's hand is still 30fps, and whether

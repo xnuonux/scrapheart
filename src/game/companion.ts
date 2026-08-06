@@ -52,6 +52,8 @@ export class Companion {
 
   /** IND-34a: history. did you repair it when it was hurt, or only when convenient. */
   careShown = 0
+  /** so the "it is hurt" line stays rare enough to be worth reading */
+  hurtAnnounced = false
 
   /**
    * IND-34c §what death means. The fragments survive you. The relationship does not,

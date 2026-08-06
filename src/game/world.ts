@@ -137,6 +137,21 @@ export function inWeather(w: World, p: { x: number; y: number }): number {
   return Math.min(1, (1 - d / wx.r) * 1.8) * wx.strength
 }
 
+/**
+ * 🚨 THE TUNING KNOB, and the one number in this file that a playtest owns rather than
+ * a measurement.
+ *
+ * `IND-34k` asks for 20-30 minutes of the handler being genuinely good company before
+ * it dies, and is explicit that if it is only there to die, players feel handled. But
+ * the P0 gate is a ONE HOUR session, and the beat has to land inside it with room left
+ * to breathe afterwards.
+ *
+ * ⚠ 8 minutes is the compromise, and it is a guess. Watch a real person: if the dog
+ * still feels like a device rather than a companion when the warden arrives, this
+ * number is too small, and it is the only thing that needs changing.
+ */
+const HANDLER_GRACE = 480
+
 /** damage a runner deals at a given depth. ~14 hits at the anchor, ~4.5 in the deep. */
 const runnerDamage = (d: number) => 7 + d * 15
 /** a caster reaches you. it hits softer than a runner because reach IS the threat. */
@@ -176,6 +191,7 @@ export class World {
   /** IND-34k: it is just there, and then it is with you. */
   handler: Handler | null = null
   handlerMet = false
+  handlerMetAt = -1
   handlerLostAt = -1
   wardenSpawned = false
   threats: Threat[] = []
@@ -333,6 +349,7 @@ export class World {
       hp: 30, alive: true, r: 6, fireCd: 0, bob: 0,
     }
     this.handlerMet = true
+    this.handlerMetAt = this.t
     this.log('something small is following you.')
   }
 
@@ -1058,7 +1075,16 @@ export function simulate(
   // step 4: you keep going. everyone keeps going.
   // ⚠ the warden is placed, and that is admitted. what must be real is the RULE, and
   // the rule holds for the rest of the game.
-  if (!w.wardenSpawned && w.handler?.alive && p.x > DEEP_X) w.spawnWarden()
+  //
+  // 🚨 Measured 2026-08-06 in three minutes of ordinary play: the handler arrived at
+  // t=40.4s and the warden spawned at t=40.4s. **Zero seconds of company.** The player
+  // had already wandered east, so the position gate was satisfied the instant the dog
+  // existed, and IND-34k's central warning ... "if it is only there to die, players will
+  // feel handled" ... was true in its most extreme possible form.
+  //
+  // Going deep is no longer sufficient. The dog has to have BEEN there.
+  if (!w.wardenSpawned && w.handler?.alive && p.x > DEEP_X
+      && w.t - w.handlerMetAt > HANDLER_GRACE) w.spawnWarden()
 
   // IND-34a §3: the history that interposition reads.
   mend(w, dt, mending)
@@ -1085,7 +1111,22 @@ export function simulate(
     const c = w.companion
     decide(c, w, dt)
     act(c, w, dt)
-    if (c.hp <= 0) { c.hp = 1; w.log(`${c.name || 'it'} is badly damaged.`) }
+    // 🚨 THE GATE'S OTHER HALF: "seven name the companion unprompted AND REACT WHEN IT
+    // IS BADLY HURT." A player cannot react to something they never notice.
+    //
+    // ⚠ Measured: three minutes of ordinary play drove it down to 43% of its health and
+    // the game said NOTHING, because the only line lived behind `hp <= 0`. The single
+    // most important signal in the build fired exclusively at the floor.
+    //
+    // It speaks once when it crosses into real trouble, and it does not speak again
+    // until it has been made whole ... so the line stays rare enough to mean something.
+    const frac = c.hp / c.maxHp
+    if (frac < 0.4 && !c.hurtAnnounced) {
+      c.hurtAnnounced = true
+      w.log(`${c.name || 'it'} is hurt.`)
+    }
+    if (frac > 0.85) c.hurtAnnounced = false
+    if (c.hp <= 0) { c.hp = 1; c.hurtAnnounced = true; w.log(`${c.name || 'it'} is badly damaged.`) }
 
     // ⚠ You earn it back, and it is quicker than the first time and it is not free.
     // Time spent near it, not fleeing, with nothing chasing you. About three minutes

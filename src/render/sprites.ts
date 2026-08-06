@@ -93,7 +93,16 @@ export function drawCompanion(
     cx.strokeStyle = hex(P.lamp, b); cx.lineWidth = 1
     cx.beginPath(); cx.arc(x, y, 13, 0, Math.PI * 2); cx.stroke()
   }
-  const c = hurt > 0 ? P.playerHi : P.comp
+  // 🚨 The gate asks whether players REACT when it is badly hurt, so being hurt has to
+  // be visible on the thing itself and not only in a log line they may not be reading.
+  // ⚠ It falters rather than flashing: the light stutters and the body dims, which
+  // reads as a machine in trouble instead of a health bar in disguise.
+  if (hurt > 0.6) {
+    const stutter = Math.sin(performance.now() / 90) > 0.2 ? 1 : 0.45
+    cx.fillStyle = hex(P.harm, 0.32 * hurt * stutter)
+    cx.fillRect(x - 8, y - 8, 16, 16)
+  }
+  const c = hurt > 0.6 ? mix(P.comp, P.harmDim, Math.min(0.6, hurt * 0.6)) : P.comp
   cx.fillStyle = c
   cx.fillRect(x - 5, y - 5, 10, 10)
   // one small mark per installed fragment. you can read what it is made of.
