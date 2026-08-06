@@ -65,6 +65,11 @@ Everything below exists only to make that gate answerable.
       the driver, and cooling was raised to roughly match heating so restraint is a rhythm rather
       than a ratio to compute. Measured: **lock at 1.97s, lock lasts 2.02s, and ten bursts of
       0.9s-on / 0.7s-off never lock at all.** 4/4.
+- [x] **DUST WEATHER** (`IND-34i`) ... spawns off-map so you watch it arrive, drifts across, ramps
+      in rather than snapping on, and attacks **GPU** so the same storm is trivial for one build
+      and crippling for another. 6/6 measured: perception **170px → 65px**, drop chance
+      **0.22 → 0.56** inside, and it is **cover as much as threat** ... a runner closed 127px on
+      the player in clear air and **22px** in dust. The player's own vignette tightens with it.
 - [x] **The single damage door.** All three player-damage paths route through `hurtPlayer()`, so
       the interposition cannot be true on one and silently absent on another.
 
@@ -192,11 +197,8 @@ Everything below exists only to make that gate answerable.
 
 ## next, in order
 
-1. **Heat must be reachable** (see the finding above) or cut the bar.
-2. **Dust weather** (`IND-34i`) ... attacks GPU. Visible from a distance, avoidable, better salvage
-   inside.
-3. **The stopped ones** (`IND-34l`) ... machines that gave up in place. Still ON. The tell is a light.
-4. **The handler needs its 20-30 minutes.** It currently arrives at t=40s and can die within the
+1. **The stopped ones** (`IND-34l`) ... machines that gave up in place. Still ON. The tell is a light.
+2. **The handler needs its 20-30 minutes.** It currently arrives at t=40s and can die within the
    minute. ⚠ IND-34k is explicit that if it is only there to die, players feel handled. The gap
    is a tuning question that only real playtesting answers.
 7. **Real-device pass** (`game-perf`) ... mid-range Android, 400 entities, thermal test at minute 10.

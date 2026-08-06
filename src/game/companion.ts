@@ -120,19 +120,24 @@ const dist = (a: {x:number,y:number}, b: {x:number,y:number}) => Math.hypot(a.x 
  * ⚠ Deciding and acting must perceive identically. If you add a sense, add it here.
  */
 function perceive(c: Companion, w: World) {
-  const near = w.threats.filter(t => t.alive && dist(c, t) < c.body.gpu)
+  // IND-34i: dust attacks GPU. ⚠ Applied HERE, in the one perception, so a half-blind
+  // companion decides and acts on the same half-blind world. A high-GPU build is
+  // suddenly your eyes and a low one is a liability you love.
+  const gpu = c.body.gpu * (1 - 0.62 * w.dustAt(c))
+  const near = w.threats.filter(t => t.alive && dist(c, t) < gpu)
                         .sort((a, b) => dist(c, a) - dist(c, b))
   return {
+    gpu,
     near,
     nearest: near[0],
     dT: near[0] ? dist(c, near[0]) : 99999,
-    lootNear: w.salvage.filter(s => dist(c, s) < c.body.gpu)
+    lootNear: w.salvage.filter(s => dist(c, s) < gpu)
                        .sort((a, b) => dist(c, a) - dist(c, b))[0],
     // pull also extends REACH. A thing that insists harder is noticed from further
     // away, which is the same statement as "it pulls harder" and needs no second
     // mechanism. Without it the heart moment was a coin flip: two identical runs
     // measured 21px (pass) and 161px (fail) with no code change in between.
-    interesting: w.interest.find(i => !i.seen && dist(c, i) < c.body.gpu * (i.pull ?? 1)),
+    interesting: w.interest.find(i => !i.seen && dist(c, i) < gpu * (i.pull ?? 1)),
   }
 }
 
@@ -145,7 +150,7 @@ function perceive(c: Companion, w: World) {
 export function score(c: Companion, w: World): Record<Behaviour, number> {
   const p = w.player
   const dP = dist(c, p)
-  const { near, nearest, dT, lootNear, interesting } = perceive(c, w)
+  const { near, nearest, dT, lootNear, interesting, gpu } = perceive(c, w)
   const playerHurt = 1 - p.hp / p.maxHp
   const selfHurt = 1 - c.hp / c.maxHp
 
@@ -153,7 +158,11 @@ export function score(c: Companion, w: World): Record<Behaviour, number> {
 
   const s = {} as Record<Behaviour, number>
 
-  s.engage = c.aggression * 1.15 * (nearest ? clamp(1 - dT / c.body.gpu, 0, 1) : 0)
+  // ⚠ `gpu`, not `c.body.gpu`. These normalise against perception range, and using the
+  // raw stat here while perceive() uses the dust-reduced one would mean a companion that
+  // cannot SEE a threat still scores it as close. Same two-sources-of-truth shape that
+  // has now bitten this file twice.
+  s.engage = c.aggression * 1.15 * (nearest ? clamp(1 - dT / gpu, 0, 1) : 0)
            - c.caution * 0.55 * selfHurt
            - low * 0.7
 
@@ -193,7 +202,7 @@ export function score(c: Companion, w: World): Record<Behaviour, number> {
   const pull = interesting?.pull ?? 1
   const afraid = w.threats.some(t => t.alive && dist(c, t) < 240)
   s.investigate = interesting
-    ? c.curiosity * 2.1 * pull * clamp(1 - dI / (c.body.gpu * pull), 0, 1)
+    ? c.curiosity * 2.1 * pull * clamp(1 - dI / (gpu * pull), 0, 1)
                         * (afraid ? Math.min(1, 0.12 * pull) : 1)
     : c.curiosity * 0.25 * (near.length === 0 ? 1 : 0)
 

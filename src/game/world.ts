@@ -57,6 +57,25 @@ export interface Bullet {
 }
 /** IND-34i: a fragment a mind actually lived in has not fully stopped. it glows. */
 export interface Salvage { x: number; y: number; frag: string | null; worn?: number }
+/**
+ * IND-34i · weather that targets ORGANS. Dust attacks GPU, so perception collapses and
+ * the same storm is trivial for one companion and crippling for another. Weather stops
+ * being a nuisance modifier and becomes a build check.
+ *
+ * 🚨 THE ONE RULE THAT CANNOT BE COMPROMISED FOR DRAMA: it is visible from a long way
+ * off and it is avoidable. Weather that is not visible from a distance is a random
+ * punishment, and `34c`'s central law is that nothing kills you but greed. It also
+ * MOVES, slowly, so where it is becomes information worth having.
+ */
+export interface Weather {
+  x: number; y: number; r: number
+  vx: number; vy: number
+  kind: 'dust'
+  /** 0 at the edges of its life, 1 at full strength. it arrives and it leaves. */
+  strength: number
+  age: number; life: number
+}
+
 /** IND-34m: things worth finding that are worth nothing. no pickup, no counter. */
 export interface Interest {
   x: number; y: number; seen: boolean; kind: 'view' | 'arrangement' | 'lamp'
@@ -93,6 +112,19 @@ export const DEEP_X = 1080
  */
 export const depthAt = (x: number) => Math.max(0, Math.min(1, (x - 340) / (W - 480)))
 
+/**
+ * How deep inside the weather a point is. 0 outside, 1 at the core.
+ * ⚠ Soft-edged on purpose ... a hard boundary would make it a room, and this is meant
+ * to be a thing you watch approach and decide about.
+ */
+export function inWeather(w: World, p: { x: number; y: number }): number {
+  const wx = w.weather
+  if (!wx) return 0
+  const d = Math.hypot(p.x - wx.x, p.y - wx.y)
+  if (d > wx.r) return 0
+  return Math.min(1, (1 - d / wx.r) * 1.8) * wx.strength
+}
+
 /** damage a runner deals at a given depth. ~14 hits at the anchor, ~4.5 in the deep. */
 const runnerDamage = (d: number) => 7 + d * 15
 /** a caster reaches you. it hits softer than a runner because reach IS the threat. */
@@ -125,6 +157,9 @@ export class World {
   interposes = 0
   /** how long the player has been holding a repair on the companion */
   mending = 0
+  /** IND-34i. One at a time at P0; the doc says five weathers is two too many. */
+  weather: Weather | null = null
+  weatherTimer = 55
 
   /** IND-34k: it is just there, and then it is with you. */
   handler: Handler | null = null
@@ -287,6 +322,29 @@ export class World {
     this.interest.push({ x: h.x, y: h.y, seen: false, kind: 'lamp', pull: 5 })
 
     this.log('it stops moving.')
+  }
+
+  /** how blind the dust makes something at this position. 0..1 */
+  dustAt(p: { x: number; y: number }) { return inWeather(this, p) }
+
+  /**
+   * IND-34i: it arrives from off-map and crosses. ⚠ It is spawned OUTSIDE the world so
+   * the player watches it come in, which is the entire difference between weather and
+   * a random punishment.
+   */
+  spawnWeather() {
+    const r = this.spawnRng
+    const fromWest = r() < 0.5
+    this.weather = {
+      x: fromWest ? -320 : W + 320,
+      y: 200 + r() * (H - 400),
+      r: 300 + r() * 190,
+      vx: (fromWest ? 1 : -1) * (17 + r() * 12),
+      vy: (r() - 0.5) * 9,
+      kind: 'dust',
+      strength: 0, age: 0, life: 78 + r() * 40,
+    }
+    this.log('there is dust on the horizon.')
   }
 
   spawnWarden() {
@@ -792,6 +850,18 @@ export function simulate(
     const tgt = targets.sort((a, b) => dist(t, a) - dist(t, b))[0]
     const d = dist(t, tgt)
 
+    // ⚠ IND-34i: "task-runners in a dust storm cannot see you either. Weather is COVER
+    // as often as it is a threat." A hazard that only ever costs the player is a tax;
+    // one that also blinds what is hunting them is a decision.
+    const blind = w.dustAt(t)
+    if (blind > 0.15 && d > 210 * (1 - blind * 0.7)) {
+      t.wind = Math.max(0, t.wind - dt * 2); t.striking = false
+      // it wanders, because it has lost you rather than because it is idle
+      t.x += Math.cos(t.seed + w.t * 0.4) * t.speed * 0.5
+      t.y += Math.sin(t.seed + w.t * 0.4) * t.speed * 0.5
+      continue
+    }
+
     // ── IND-34n: the caster. It keeps its distance and shoots, so the fight has a
     //    second verb. A field of pure melee can only ever be walked away from.
     if (t.kind === 'caster') {
@@ -843,7 +913,10 @@ export function simulate(
 
     if (t.hp <= 0) {
       t.alive = false
-      w.salvage.push({ x: t.x, y: t.y, frag: warden ? 'selfpres' : Math.random() < 0.22 ? pickFrag() : null })
+      // ⚠ IND-34i: "better salvage under bad weather. The reason to go in anyway, and
+      // the whole risk economy in one line."
+      const odds = 0.22 + w.dustAt(t) * 0.34
+      w.salvage.push({ x: t.x, y: t.y, frag: warden ? 'selfpres' : Math.random() < odds ? pickFrag() : null })
       sfx.destroy()
       // ⚠ and when it stops, nothing is said. no text, no reward screen, no
       // acknowledgement of what the player just carried into that room.
@@ -898,6 +971,23 @@ export function simulate(
 
   // IND-34a §3: the history that interposition reads.
   mend(w, dt, mending)
+
+  // ── IND-34i: the weather crosses ──
+  if (w.weather) {
+    const x = w.weather
+    x.age += dt
+    x.x += x.vx * dt; x.y += x.vy * dt
+    // it arrives and it leaves. never a wall of effect that snaps on.
+    x.strength = Math.min(1, Math.min(x.age / 9, (x.life - x.age) / 12))
+    if (x.age > x.life || x.x < -700 || x.x > W + 700) {
+      w.weather = null
+      w.weatherTimer = 70 + Math.random() * 60
+      w.log('the air clears.')
+    }
+  } else {
+    w.weatherTimer -= dt
+    if (w.weatherTimer <= 0) w.spawnWeather()
+  }
 
   // ── the companion ──
   if (w.companion) {

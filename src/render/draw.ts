@@ -197,6 +197,31 @@ export function render(cx: CanvasRenderingContext2D, w: World, alpha: number, vw
   drawPlayer(cx, p.prevX + (p.x - p.prevX) * alpha, p.prevY + (p.y - p.prevY) * alpha,
              w.t - p.lastHurt < 0.12, p.retreating)
 
+  // 🚨 IND-34i: THE DUST. Drawn over the world but INSIDE the camera transform, so it
+  // sits in the field and can be seen coming from the far side of the map. That
+  // visibility is the one rule the doc says cannot be compromised for drama ... weather
+  // you cannot see approaching is a random punishment, and `34c`'s law is that nothing
+  // kills you but greed.
+  if (w.weather) {
+    const x = w.weather, s = x.strength
+    const g = cx.createRadialGradient(x.x, x.y, x.r * 0.18, x.x, x.y, x.r)
+    g.addColorStop(0, hex(P.dust, 0.50 * s))
+    g.addColorStop(0.55, hex(P.dust, 0.30 * s))
+    g.addColorStop(1, hex(P.dust, 0))
+    cx.fillStyle = g
+    cx.fillRect(x.x - x.r, x.y - x.r, x.r * 2, x.r * 2)
+    // a few drifting bands so it reads as moving air rather than a painted circle
+    for (let i = 0; i < 5; i++) {
+      const ph = w.t * (0.25 + i * 0.05) + i * 1.7
+      const bx = x.x + Math.cos(ph) * x.r * 0.5
+      const by = x.y + Math.sin(ph * 0.7) * x.r * 0.34
+      const br = x.r * (0.30 + (i % 3) * 0.09)
+      const bg = cx.createRadialGradient(bx, by, 0, bx, by, br)
+      bg.addColorStop(0, hex(P.dust, 0.16 * s)); bg.addColorStop(1, hex(P.dust, 0))
+      cx.fillStyle = bg; cx.fillRect(bx - br, by - br, br * 2, br * 2)
+    }
+  }
+
   // ⚠ The world stops at W and H, and past DEEP_X the player is always near the east
   // boundary, so a hard black rectangle sat in frame for the entire back half of the
   // game. The ground has to END rather than be CUT ... dust closing in, not a level
@@ -214,10 +239,18 @@ export function render(cx: CanvasRenderingContext2D, w: World, alpha: number, vw
 
   cx.restore()
 
-  // vignette. the dark closes in.
-  const vg = cx.createRadialGradient(vw / 2, vh / 2, Math.min(vw, vh) * 0.30, vw / 2, vh / 2, Math.max(vw, vh) * 0.72)
+  // vignette. the dark closes in. ⚠ And in dust it closes in FURTHER, so the player
+  // feels the same loss of perception the companion is taking as a stat.
+  const dust = w.dustAt(w.player)
+  const inner = Math.min(vw, vh) * (0.30 - dust * 0.22)
+  const outer = Math.max(vw, vh) * (0.72 - dust * 0.30)
+  const vg = cx.createRadialGradient(vw / 2, vh / 2, inner, vw / 2, vh / 2, outer)
   vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.78)')
   cx.fillStyle = vg; cx.fillRect(0, 0, vw, vh)
+  if (dust > 0) {
+    cx.fillStyle = hex(P.dust, dust * 0.16)
+    cx.fillRect(0, 0, vw, vh)
+  }
 
   // IND-34c: the recall. cold, not triumphant. the world goes away for a moment and
   // comes back somewhere quieter. it closes IN rather than flashing out, because
