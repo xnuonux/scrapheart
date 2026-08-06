@@ -59,6 +59,12 @@ Everything below exists only to make that gate answerable.
       **B saves you at willingness 1.882; C is the identical machine at 0.983 and lets you take
       the hit; D at 1.125 is flipped by PRESERVATION alone; D2 at 1.583 saves you again.**
       Care is now spendable (`hold [E]`) and danger-weighted, measured at 3.5x.
+- [x] **HEAT IS REAL** (`IND-34j`) ... the cooling branch was running on every frame *between*
+      shots while the trigger was still held, so the net climb was 0.27/s and the lock needed
+      ~3.7s of unbroken fire that nobody would ever produce. Holding the trigger no longer cools
+      the driver, and cooling was raised to roughly match heating so restraint is a rhythm rather
+      than a ratio to compute. Measured: **lock at 1.97s, lock lasts 2.02s, and ten bursts of
+      0.9s-on / 0.7s-off never lock at all.** 4/4.
 - [x] **The single damage door.** All three player-damage paths route through `hurtPlayer()`, so
       the interposition cannot be true on one and silently absent on another.
 
@@ -175,10 +181,14 @@ Everything below exists only to make that gate answerable.
   has jitter) and every entry logged. ⚠ A repeated line trains the player to stop reading the log,
   which costs every message that matters ... including the ones the P0 gate depends on.
 
-- **Overheat is nearly unreachable, so the heat mechanic is currently decorative.** Measured: heat
-  climbs ~0.27/s net (the decay branch runs on every frame between shots), so the lock needs
-  ~3.7s of *continuous* fire. Two probe runs at 2.6s never once tripped it. Nobody holds fire that
-  long in play. Either the climb rate goes up or heat is a bar that never means anything.
+- **Overheat was nearly unreachable.** FIXED, see done. The cause is worth keeping: a cooling
+  branch sitting in the `else` of a *fire-rate* check, so it ran between shots while the trigger
+  was held. ⚠ **The bug was in the control flow, not the constants**, and three rounds of tuning
+  numbers would never have found it.
+
+- **A probe that breaks on the wrong event measures nothing.** The lock-duration check exited on
+  `heat <= 0` at 1.2s, but the LOCK is a fixed 2s window, so it returned -1ms three times running.
+  Two independent events need two independent records.
 
 ## next, in order
 

@@ -708,15 +708,30 @@ export function simulate(
   // IND-34j: heat, not ammo. sustained fire locks the weapon for ~2s.
   p.fireCd = Math.max(0, p.fireCd - dt)
   p.overheated = Math.max(0, p.overheated - dt)
-  if (firing && p.overheated <= 0 && p.fireCd <= 0) {
-    const a = Math.atan2(aim.y - p.y, aim.x - p.x)
-    w.bullets.push({ x: p.x, y: p.y, vx: Math.cos(a) * 420, vy: Math.sin(a) * 420, life: 1.1, from: 'player' })
-    p.fireCd = 0.14
-    p.heat = Math.min(1, p.heat + 0.075)
-    sfx.fire()
-    if (p.heat >= 1) { p.overheated = 2; p.heat = 1; sfx.overheat(); w.log('the driver is too hot to fire.') }
+  // ⚠ IND-34j: "a rhythm mechanic, not a resource chore ... two seconds, generous
+  // threshold, and it should feel like restraint rather than like maths."
+  //
+  // It was neither, because the cooling branch ran on every frame BETWEEN shots while
+  // the trigger was still held. Net climb was 0.27/s, so the lock needed ~3.7 seconds
+  // of unbroken fire and two separate probe runs at 2.6s never once tripped it. The
+  // bar was decorative. Holding the trigger no longer cools the driver, which puts the
+  // lock at ~1.9s and makes trigger discipline an actual decision.
+  if (firing && p.overheated <= 0) {
+    if (p.fireCd <= 0) {
+      const a = Math.atan2(aim.y - p.y, aim.x - p.x)
+      w.bullets.push({ x: p.x, y: p.y, vx: Math.cos(a) * 420, vy: Math.sin(a) * 420, life: 1.1, from: 'player' })
+      p.fireCd = 0.14
+      p.heat = Math.min(1, p.heat + 0.075)
+      sfx.fire()
+      if (p.heat >= 1) { p.overheated = 2; p.heat = 1; sfx.overheat(); w.log('the driver is too hot to fire.') }
+    }
   } else {
-    p.heat = Math.max(0, p.heat - dt * (p.overheated > 0 ? 0.55 : 0.30))
+    // ⚠ Cooling must roughly MATCH heating, or "trigger discipline" becomes a ratio the
+    // player has to compute. At 0.30/s against a 0.535/s climb you had to rest nearly
+    // twice as long as you fired, and ten bursts of 0.9s-on / 0.7s-off still locked.
+    // At 0.70/s a burst costs about as long as it lasts, which is a rhythm you feel
+    // rather than solve.
+    p.heat = Math.max(0, p.heat - dt * (p.overheated > 0 ? 0.85 : 0.70))
   }
 
   // ── bullets ──
