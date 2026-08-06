@@ -34,6 +34,18 @@ export interface Threat {
   seed: number
   announced?: boolean
   fireCd?: number
+  /**
+   * IND-34l · wardens by degree. 1 is intact: announces, then kills everything that
+   * moves. 2 announced and CANNOT follow through ... its targeting is gone, and it will
+   * give the warning again every time you pass, for as long as the game exists.
+   *
+   * ⚠ The RULE stays absolute (a warden that can act one-shots a handler, always). What
+   * varies is whether it can act at all. That is how `34k`'s certainty and `34l`'s
+   * variance both hold.
+   */
+  degree?: 1 | 2
+  /** it re-announces every time you come back into range. that is the whole beat. */
+  rearmAt?: number
 }
 
 /**
@@ -270,6 +282,39 @@ export class World {
       })
     }
 
+    // ── IND-34l · THE ONES THAT GAVE UP ──
+    //
+    // `34b`'s The Still is machines that CHOSE: they walked somewhere, arranged
+    // themselves, powered down. Deliberate, almost dignified. This is the other thing:
+    // machines that stopped WHERE THEY WERE.
+    //
+    // 🚨 Still on. ⚠ That is the entire mechanic. A machine that is off is dead and
+    // reads as scenery. A machine that is on, and doing nothing, has decided something.
+    //
+    // ⚠ Found individually, never in groups. The Still is the group. This is one,
+    // somewhere, that did not make it there. So they are spread deliberately far apart
+    // and never near the opening.
+    const spots = [
+      { x: 300, y: 260 }, { x: 1180, y: 250 }, { x: 430, y: 980 },
+      { x: 1420, y: 900 }, { x: 900, y: 190 }, { x: 1300, y: 640 },
+    ]
+    for (const s of spots) {
+      this.threats.push({
+        x: s.x + (r() - 0.5) * 90, y: s.y + (r() - 0.5) * 90,
+        r: 11, hp: 30, maxHp: 30, speed: 0,
+        wind: 0, striking: false, alive: true, kind: 'stopped', seed: r() * 1000,
+      })
+    }
+
+    // ⚠ IND-34l: "rare, unmarked, and placed somewhere a player has no reason to be."
+    // Nothing points at it. Most players will never find it. The ones who do will not
+    // be sure what they are looking at for a while, which is the point.
+    this.threats.push({
+      x: 1460, y: 1080, r: 26, hp: 340, maxHp: 340, speed: 0,
+      wind: 0, striking: false, alive: true, kind: 'warden', seed: 12,
+      announced: false, degree: 2,
+    })
+
     for (let i = 0; i < 5; i++) this.spawnThreat(r)
   }
 
@@ -355,6 +400,7 @@ export class World {
       x: clampW(p.x + 300), y: clampH(p.y - 60),
       r: 26, hp: 340, maxHp: 340, speed: 0.42,
       wind: 0, striking: false, alive: true, kind: 'warden', seed: 7, announced: false,
+      degree: 1,
     })
   }
 
@@ -403,11 +449,19 @@ export class World {
     // area, and IND-34k step 8 depends on it: you go back, your choice, no prompt, no
     // marker, and the scrap is where you left it. An exit that deleted it would turn
     // leaving into winning.
-    const warden = this.threats.find(t => t.alive && t.kind === 'warden')
+    // ⚠ ALL of them, and the stopped ones too. There are two wardens now (one intact,
+    // one that gave the warning and cannot follow through) and `find` would have kept
+    // exactly one, silently deleting whichever it did not pick. The stopped ones are
+    // part of the world's furniture and clearing them would mean the field quietly
+    // empties itself every time the player goes home.
+    const keep = this.threats.filter(t => t.alive && (t.kind === 'warden' || t.kind === 'stopped'))
     this.threats = []
-    if (warden) {
-      warden.x = clampW(Math.max(warden.x, DEEP_X + 120)); warden.wind = 0; warden.striking = false
-      this.threats.push(warden)
+    for (const k of keep) {
+      if (k.kind === 'warden' && k.degree !== 2) {
+        k.x = clampW(Math.max(k.x, DEEP_X + 120))
+      }
+      k.wind = 0; k.striking = false
+      this.threats.push(k)
     }
     this.spawnTimer = 4
     this.bullets = []
@@ -819,6 +873,18 @@ export function simulate(
       w.bullets.splice(i, 1)
       hitstop(t.hp <= 0 ? 90 : 40)      // game-feel: hitstop before particles
       sfx.hit()
+
+      // 🚨 IND-34l: every one of them is salvage, and the game will never stop you.
+      // The ones that gave up INTACT are BETTER salvage ... whole, undamaged, not torn
+      // out of anything still running. So the most upsetting thing in any given room is
+      // usually also the most profitable. ⚠ The game does not comment. No morality
+      // anywhere, no reward for kindness, no penalty for stripping.
+      if (t.kind === 'stopped' && t.hp <= 0) {
+        t.alive = false
+        w.salvage.push({ x: t.x - 9, y: t.y, frag: pickFrag() })
+        w.salvage.push({ x: t.x + 9, y: t.y + 6, frag: pickFrag() })
+        sfx.destroy()
+      }
       break
     }
   }
@@ -827,14 +893,36 @@ export function simulate(
   //    around humans and that safety system is one of the few things still working. ──
   for (const t of w.threats) {
     if (!t.alive) continue
+
+    // ⚠ IND-34l: the ones that gave up do not react to you. Not to light, not to noise,
+    // not to being taken apart. They are skipped before ANY behaviour runs, because a
+    // stopped machine that flinches is a machine that noticed, and the moment one
+    // notices the whole register collapses into pathos.
+    if (t.kind === 'stopped') continue
+
     const warden = t.kind === 'warden'
 
     // IND-34k step 5: it announces itself. Politely, because announcing was part of
     // the procedure. ⚠ No threat, no menace, no villain voice. It is doing its job.
-    if (warden && !t.announced) {
+    if (warden && !t.announced && dist(t, p) < 620) {
       t.announced = true
       sfx.announce()
-      w.log('UNIT 7. AREA IS BEING CLEARED. PLEASE STAND AWAY.')
+      w.log(t.degree === 2 ? 'UNIT 12. AREA IS BEING CLEARED. PLEASE STAND AWAY.'
+                           : 'UNIT 7. AREA IS BEING CLEARED. PLEASE STAND AWAY.')
+    }
+
+    // 🚨 IND-34l degree 2: it announced, and it cannot follow through. Its targeting is
+    // gone. It will give the warning again every time you pass, for as long as the game
+    // exists, and it will never do anything else.
+    //
+    // ⚠ The two seconds where you cannot tell whether it is broken or you are simply
+    // not in range yet is free tension and the best thing about the whole system. It
+    // gets NO label, NO colour and NO health bar ... degree is readable from behaviour
+    // or it is not readable at all.
+    if (warden && t.degree === 2) {
+      t.wind = 0; t.striking = false
+      if (dist(t, p) > 780 && w.t > (t.rearmAt ?? 0)) { t.announced = false; t.rearmAt = w.t + 8 }
+      continue
     }
 
     // ⚠ a warden's only surviving instruction is ENGAGE HOSTILES with no definition of
@@ -931,7 +1019,10 @@ export function simulate(
   w.spawnTimer -= dt
   const d = depthAt(p.x)
   const cap = Math.round(3 + d * 3)                  // 3 in the shallows, 6 at the edge
-  if (w.spawnTimer <= 0 && w.threats.filter(t => t.alive).length < cap) {
+  // ⚠ the stopped ones are furniture, not pressure. counting them toward the crowd cap
+  // would mean walking past a machine that gave up makes the field SAFER.
+  const hostile = w.threats.filter(t => t.alive && t.kind !== 'stopped').length
+  if (w.spawnTimer <= 0 && hostile < cap) {
     w.spawnThreat(); w.spawnTimer = (4.4 - d * 1.4) + Math.random() * 3
   }
 

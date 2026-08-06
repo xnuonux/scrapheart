@@ -121,6 +121,10 @@ export function render(cx: CanvasRenderingContext2D, w: World, alpha: number, vw
 
   for (const t of w.threats) {
     if (!t.alive) continue
+    // IND-34l: it is ON, and it is doing nothing. ⚠ Drawn with the wreck routine
+    // because it IS a wreck in silhouette ... the only thing separating it from the ten
+    // thousand around it is that one light is still lit. No label, no colour, no bar.
+    if (t.kind === 'stopped') { drawWreck(cx, t.x, t.y, t.r * 1.5, t.seed, true); continue }
     if (t.kind === 'warden') drawWarden(cx, t.x, t.y, t.r, t.wind)
     else if (t.kind === 'caster') drawCaster(cx, t.x, t.y, t.r, t.seed, t.wind)
     else drawMachine(cx, t.x, t.y, t.r, t.seed, t.wind)

@@ -70,6 +70,16 @@ Everything below exists only to make that gate answerable.
       and crippling for another. 6/6 measured: perception **170px → 65px**, drop chance
       **0.22 → 0.56** inside, and it is **cover as much as threat** ... a runner closed 127px on
       the player in clear air and **22px** in dust. The player's own vignette tightens with it.
+- [x] **THE ONES THAT GAVE UP** (`IND-34l`) ... machines that stopped where they were, still ON,
+      found individually and never in groups (6 of them, closest pair 312px apart). They do not
+      react to anything: standing on one for 3.5s moved it 0px and cost 0 damage. **Every one is
+      salvage and the intact ones are BETTER** ... 2 guaranteed fragments against a runner's 0.23
+      expected, so the most upsetting thing in a room is usually the most profitable, and the game
+      never comments.
+- [x] **A WARDEN BY DEGREE** (`IND-34l`) ... one that announced and cannot follow through. Standing
+      inside its reach for 5 seconds costs nothing. It re-arms and gives the warning again every
+      time you pass, forever. ⚠ Unmarked, unlabelled, placed where nobody has a reason to be, and
+      the rule stays absolute: a warden **that can act** still one-shots a handler. 7/7.
 - [x] **The single damage door.** All three player-damage paths route through `hurtPlayer()`, so
       the interposition cannot be true on one and silently absent on another.
 
@@ -197,8 +207,7 @@ Everything below exists only to make that gate answerable.
 
 ## next, in order
 
-1. **The stopped ones** (`IND-34l`) ... machines that gave up in place. Still ON. The tell is a light.
-2. **The handler needs its 20-30 minutes.** It currently arrives at t=40s and can die within the
+1. **The handler needs its 20-30 minutes.** It currently arrives at t=40s and can die within the
    minute. ⚠ IND-34k is explicit that if it is only there to die, players feel handled. The gap
    is a tuning question that only real playtesting answers.
 7. **Real-device pass** (`game-perf`) ... mid-range Android, 400 entities, thermal test at minute 10.
