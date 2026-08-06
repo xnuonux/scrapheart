@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>SCRAPHEART</title>
+<style>
+  /* game-input: kill the browser defaults FIRST, or double-tap zooms mid-game and a
+     vertical drag scrolls the page instead of aiming. */
+  html, body { margin:0; height:100%; overflow:hidden; overscroll-behavior:none; background:#05070a; }
+  canvas, #c {
+    display:block; touch-action:none; user-select:none; -webkit-user-select:none;
+    -webkit-touch-callout:none; -webkit-tap-highlight-color:transparent;
+  }
+  #ui{
+    position:fixed; right:0; top:0; bottom:0; width:270px; transform:translateX(100%);
+    transition:transform .18s cubic-bezier(.22,.68,.12,1);
+    background:rgba(9,12,17,.94); border-left:1px solid #232e3a; color:#c8d0dc;
+    font:12px ui-monospace,Menlo,Consolas,monospace; padding:16px; overflow:auto;
+    padding-bottom:calc(16px + env(safe-area-inset-bottom));
+  }
+  #ui.open{ transform:none; }
+  #ui h2{ font-size:10px; letter-spacing:.2em; color:#3f5a80; margin:14px 0 8px; font-weight:600; }
+  #ui h2:first-child{ margin-top:0; }
+  .frag,.slot{ padding:7px 9px; border:1px solid #1c242e; border-radius:4px; margin-bottom:5px; cursor:pointer; }
+  .frag:hover,.slot:hover{ border-color:#8fb8ff; }
+  .frag.sel{ border-color:#ffd9a0; background:rgba(255,217,160,.06); }
+  .frag b{ display:block; color:#c8d0dc; font-weight:600; }
+  .dim{ color:#4a5a6e; display:block; font-size:10.5px; }
+  .kinds{ color:#3f5a80; font-size:10px; letter-spacing:.08em; }
+  .slot.empty{ color:#39404d; border-style:dashed; }
+  .slot.full{ color:#8fb8ff; }
+  #name{
+    position:fixed; left:50%; bottom:64px; transform:translateX(-50%); display:none;
+    background:rgba(9,12,17,.9); color:#8fb8ff; border:1px solid #3f5a80; border-radius:99px;
+    padding:9px 20px; font:11px ui-monospace,monospace; letter-spacing:.1em; cursor:pointer;
+    min-height:44px; /* game-input: 44px floor */
+  }
+  #name:hover{ border-color:#8fb8ff; }
+  #hint{
+    position:fixed; left:16px; bottom:calc(8px + env(safe-area-inset-bottom));
+    color:#2f3d4c; font:10px ui-monospace,monospace; letter-spacing:.06em;
+  }
+</style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="ui"></div>
+  <button id="name">give it a name</button>
+  <div id="hint">WASD move &nbsp; click/hold fire &nbsp; I pack &nbsp; M mute</div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

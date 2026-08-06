@@ -1,0 +1,1 @@
+{"root":["./src/main.ts","./src/types.d.ts","./src/audio/sfx.ts","./src/core/input.ts","./src/core/loop.ts","./src/core/rng.ts","./src/game/companion.ts","./src/game/fragments.ts","./src/game/world.ts","./src/render/draw.ts","./src/render/palette.ts","./src/render/sprites.ts"],"version":"5.9.3"}
