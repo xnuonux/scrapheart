@@ -207,11 +207,32 @@ Everything below exists only to make that gate answerable.
 
 ## next, in order
 
-1. **The handler needs its 20-30 minutes.** It currently arrives at t=40s and can die within the
-   minute. ⚠ IND-34k is explicit that if it is only there to die, players feel handled. The gap
-   is a tuning question that only real playtesting answers.
-7. **Real-device pass** (`game-perf`) ... mid-range Android, 400 entities, thermal test at minute 10.
-8. **The gate itself.** Ten people, one hour, watched.
+🚨 **Everything buildable from the spec is built. All three remaining items need a human, a
+phone, or ten strangers, and none of them can be closed by writing more code.** That is the
+honest state, and continuing to add systems now would be avoiding the gate rather than
+approaching it.
+
+1. **The handler needs its 20-30 minutes.** It arrives at t=40s and can die inside the minute.
+   ⚠ `IND-34k` is explicit that if it is only there to die, players feel handled. **A number I
+   pick here is a guess wearing a decimal point** ... it wants a human watching a human.
+2. **Real-device pass** (`game-perf`) ... mid-range Android, 400 entities, thermal test at minute
+   10. Headless chromium says 60fps and headless chromium has never been hot in someone's hand.
+   ⚠ **Dust already costs measurable frames on a desktop** (55-57fps against a flat 60 everywhere
+   else). It draws six radial gradients per frame and gradients are the most expensive thing in
+   the canvas 2D API. **First thing to profile on a phone**, and the fix is a cached offscreen
+   dust sprite blitted at varying alpha rather than rebuilt every frame.
+3. **THE GATE.** Ten people, one hour, watched. **Seven name the companion unprompted and react
+   when it is badly hurt.** ⚠ If it fails, stop the project.
+
+### what a watcher should look for, in priority order
+
+- **Do they name it?** Unprompted, without the button. That is the whole gate.
+- **Do they go back for it after they die?** The permadeath contract lives or dies here.
+- **Does the first loss land, or does it read as cruelty?** ⚠ Dying during that beat costs the
+  dog AND the machine in the same minute. **Highest-risk moment in the build.**
+- **Does anyone repair it under fire?** If nobody does, interposition never fires and a whole
+  system is invisible.
+- **Does anyone stop at something worth nothing?** The atmosphere either works or it is decoration.
 
 ## refused, permanently
 
