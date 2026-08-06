@@ -66,6 +66,20 @@ Everything below exists only to make that gate answerable.
   assertion is a claim about the probe as much as about the code.** Read the measurement before
   believing either.
 
+- 🚨 **Calibrated against the real RotMG** (`IND-34n`, extracted from the local install: 33,762
+  object records, 5,775 enemies, 12,863 projectiles). Three findings that change the build:
+  1. **Time-to-die is a designed constant of ~5 hits across the WHOLE game.** Health 150 → 750 and
+     enemy damage 30 → 150, in lockstep. ⚠ **Progression buys access, never safety.** If a better
+     machine ever makes the field feel safe, this has stopped being the genre.
+  2. **The opening is ~3x gentler than the average.** The literal first enemy is 70hp / 9 damage
+     against 150hp: **16 hits to die.** 🚨 **SCRAPHEART is inverted** ... the warden is a 3.3-hit
+     killer arriving in the first ten minutes, which is exactly why four probes died in the deep.
+     **The fix is a gentler opening tier, not a nerfed warden.**
+  3. **Enemies outrange the player 1.5-4x** (enemy median 13.5 tiles; best weapon 9.0). 🚨 **Every
+     SCRAPHEART enemy is melee and the player outranges them ~8x**, so there is no dodging game:
+     you kite for free until enough bodies converge and then die instantly and unteachably. ⚠ That
+     satisfies "everything is dodgeable" on paper and violates it in spirit.
+
 - 🚨 **The deep kills the player on every single automated run, and the first-loss beat pays for
   it twice.** Four probe versions died there. Die during IND-34k and you lose the dog AND your
   machine in the same minute ... the heart is on the ground, your companion is standing next to
@@ -136,7 +150,14 @@ Everything below exists only to make that gate answerable.
 
 ## next, in order
 
-1. **Interpose** (`IND-34a`) ... capability + disposition + history, and it destroys the fragment
+1. 🚨 **THE CALIBRATION PASS** (`IND-34n`). Highest value item in this file now, because it is the
+   difference between a game that is dire and a game that is unfair, and everything below is
+   polish on top of it.
+   - a gentler opening tier: ~12-16 hits of margin, tightening with depth
+   - **at least one ranged enemy shape**, so the fight has more than one verb
+   - hits-to-die back to ~4-5 against tier-appropriate content, at every tier
+   - fewer simultaneous melee bodies; the crowd is what kills, and a crowd is not a pattern
+2. **Interpose** (`IND-34a`) ... capability + disposition + history, and it destroys the fragment
    that let it. The heart grants it and carries the loyalty, so the bookend is half-built already:
    the first socket the player fills holds something that died, and the last one is emptied by
    something saving them. Needs `careShown` wired to repairs.
