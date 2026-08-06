@@ -79,7 +79,9 @@ Everything below exists only to make that gate answerable.
 - [x] **A WARDEN BY DEGREE** (`IND-34l`) ... one that announced and cannot follow through. Standing
       inside its reach for 5 seconds costs nothing. It re-arms and gives the warning again every
       time you pass, forever. ⚠ Unmarked, unlabelled, placed where nobody has a reason to be, and
-      the rule stays absolute: a warden **that can act** still one-shots a handler. 7/7.
+      the rule stays absolute: a warden **that can act** still one-shots a handler. 7/7, and the
+      pair is proven both ways ... an intact warden kills a 999hp handler in **one strike, 9ms**,
+      and the broken one cannot kill it in **four seconds with the handler sitting in its lap**.
 - [x] **The single damage door.** All three player-damage paths route through `hurtPlayer()`, so
       the interposition cannot be true on one and silently absent on another.
 
@@ -99,6 +101,13 @@ Everything below exists only to make that gate answerable.
   `hp <= 0`, which is false, so the branch never ran and the probe blamed the game. ⚠ **A failing
   assertion is a claim about the probe as much as about the code.** Read the measurement before
   believing either.
+
+- 🚨 **Adding a second of anything breaks every `find()` that assumed one.** The degree-2 warden
+  made `find(t => t.kind === 'warden')` ambiguous in three places at once: `resetSite` kept
+  whichever it happened to pick and silently deleted the other, and the first-loss probe grabbed
+  the broken one and reported the **absolute rule** as violated. ⚠ **`find` on a kind is a
+  singleton assumption written in a way that never announces itself.** The complement is now
+  asserted too, so "degree" cannot quietly become a cosmetic label.
 
 - 🚨 **I spent four measurement rounds testing a bundle I had not rebuilt.** Changed an interpose
   threshold from 1.05 to 1.30, wrote the probe, ran it, and watched a willingness of 1.125 sail
