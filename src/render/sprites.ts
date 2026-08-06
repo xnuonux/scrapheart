@@ -98,6 +98,52 @@ export function drawCompanion(
   cx.fillRect(x - 1, y - 2, 2, 2)
 }
 
+/**
+ * IND-34k: the handler. Somebody else's design, so it does NOT share the companion's
+ * construction language ... no sockets to read, no parts to count. It is warm rather
+ * than cold, because it is the only friendly thing in the game the player did not build.
+ * ⚠ Small, low to the ground, and it bobs. It has to be likeable on its own terms.
+ */
+export function drawHandler(cx: CanvasRenderingContext2D, x: number, y: number, bob: number) {
+  const b = Math.sin(bob) * 1.2
+  cx.fillStyle = mix(P.lamp, P.machine, 0.55)
+  cx.fillRect(x - 6, y - 3 + b, 12, 6)          // body, long and low
+  cx.fillRect(x + 4, y - 6 + b, 5, 5)           // head, forward
+  cx.fillStyle = hex(P.structure, 0.9)
+  cx.fillRect(x - 5, y + 3, 2, 3)               // legs, planted while the body bobs
+  cx.fillRect(x + 3, y + 3, 2, 3)
+  cx.fillStyle = hex(P.lamp, 0.95)              // the light where an eye would be
+  cx.fillRect(x + 6, y - 5 + b, 2, 2)
+}
+
+/**
+ * IND-34k: the warden. Bigger, slower, and it does not look angry. It looks like
+ * equipment. ⚠ The telegraph is enormous because a warden is not trying to trick you,
+ * it is warning you, exactly as it was built to.
+ */
+export function drawWarden(cx: CanvasRenderingContext2D, x: number, y: number, s: number, wind: number) {
+  const lean = wind * 4
+  cx.fillStyle = mix(P.machine, P.void, 0.25)
+  cx.fillRect(x - s * 0.8 + lean, y - s * 0.9, s * 1.6, s * 1.8)
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + 0.4
+    cx.save(); cx.translate(x, y); cx.rotate(a)
+    cx.fillRect(0, -3, s * 1.5, 6)
+    cx.restore()
+  }
+  cx.fillStyle = hex(P.machineHi, 0.5)
+  cx.fillRect(x - s * 0.8 + lean, y - s * 0.9, s * 1.6, 3)
+  // the working light. amber, because it is a maintenance unit doing maintenance.
+  const pulse = 0.5 + Math.sin(performance.now() / 260) * 0.35
+  cx.fillStyle = hex(P.lamp, pulse)
+  cx.fillRect(x - 3, y - s * 0.9 - 6, 6, 4)
+  if (wind > 0) {
+    cx.strokeStyle = hex(P.harm, Math.min(0.95, wind * 0.75))
+    cx.lineWidth = 3
+    cx.beginPath(); cx.arc(x, y, 40 + wind * 58, 0, Math.PI * 2); cx.stroke()
+  }
+}
+
 export function drawPlayer(cx: CanvasRenderingContext2D, x: number, y: number, hurt: boolean, retreating: boolean) {
   cx.fillStyle = hurt ? P.playerHi : P.player
   cx.beginPath(); cx.arc(x, y, 7, 0, Math.PI * 2); cx.fill()

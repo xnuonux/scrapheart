@@ -2,7 +2,7 @@
 // IND-34m: light does most of the work. Cheapest atmosphere available in 2D.
 
 import { P, hex } from './palette'
-import { drawWreck, drawMachine, drawCompanion, drawPlayer } from './sprites'
+import { drawWreck, drawMachine, drawCompanion, drawPlayer, drawHandler, drawWarden } from './sprites'
 import type { World } from '../game/world'
 import { W as WORLD_W, H as WORLD_H } from '../game/world'
 
@@ -55,6 +55,11 @@ export function render(cx: CanvasRenderingContext2D, w: World, alpha: number, vw
   for (const i of w.interest) {
     if (i.x < vx0 || i.x > vx1 || i.y < vy0 || i.y > vy1) continue
     const t = performance.now() / 1000
+    // ⚠ IND-34k's heart also sits in this list so the companion's curiosity can find
+    // it. It must NOT draw an ambient lamp on top of itself: the field already has
+    // nine identical amber blobs and the first glowing fragment the player ever sees
+    // was landing as the tenth. The salvage pass owns its look entirely.
+    if ((i.pull ?? 1) > 1) continue
     if (i.kind === 'lamp') {
       const g = cx.createRadialGradient(i.x, i.y, 0, i.x, i.y, 90)
       g.addColorStop(0, hex(P.lamp, 0.22)); g.addColorStop(1, hex(P.lamp, 0))
@@ -75,13 +80,34 @@ export function render(cx: CanvasRenderingContext2D, w: World, alpha: number, vw
   // salvage
   for (const sv of w.salvage) {
     if (sv.x < vx0 || sv.x > vx1) continue
-    cx.fillStyle = sv.frag ? P.glow : P.salvage
+    cx.fillStyle = (sv.worn ?? 0) > 0 ? P.playerHi : sv.frag ? P.glow : P.salvage
     cx.fillRect(sv.x - 3, sv.y - 3, 6, 6)
     if (sv.frag) {
       // IND-34i: a fragment that a mind lived in has not fully stopped.
-      const g = cx.createRadialGradient(sv.x, sv.y, 0, sv.x, sv.y, 26)
-      g.addColorStop(0, hex(P.glow, 0.30)); g.addColorStop(1, hex(P.glow, 0))
-      cx.fillStyle = g; cx.fillRect(sv.x - 26, sv.y - 26, 52, 52)
+      //
+      // ⚠ IND-34k: a WORN one lived in for an entire existence, and this is the first
+      // one the player ever sees. It has to be unmistakably not-like-the-others at a
+      // glance, from across a field, without a word ... so it breathes.
+      const w0 = sv.worn ?? 0
+      if (w0 <= 0) {
+        const g = cx.createRadialGradient(sv.x, sv.y, 0, sv.x, sv.y, 26)
+        g.addColorStop(0, hex(P.glow, 0.30)); g.addColorStop(1, hex(P.glow, 0))
+        cx.fillStyle = g; cx.fillRect(sv.x - 26, sv.y - 26, 52, 52)
+      } else {
+        // ⚠ The worn one has to separate from a field of nine amber lamps and a dozen
+        // amber salvage glows, or "the first glowing fragment the player ever sees"
+        // reads as the tenth lamp. So it is the one thing in the game that is WHITE,
+        // and it breathes, and nothing else does either.
+        const beat = 0.5 + Math.sin(performance.now() / 900) * 0.5
+        const rad = 34 + 26 * beat
+        const halo = cx.createRadialGradient(sv.x, sv.y, 0, sv.x, sv.y, rad)
+        halo.addColorStop(0, hex(P.playerHi, 0.22 + 0.20 * beat))
+        halo.addColorStop(0.45, hex(P.glow, 0.16 + 0.14 * beat))
+        halo.addColorStop(1, hex(P.glow, 0))
+        cx.fillStyle = halo; cx.fillRect(sv.x - rad, sv.y - rad, rad * 2, rad * 2)
+        cx.fillStyle = hex(P.playerHi, 0.75 + 0.25 * beat)
+        cx.fillRect(sv.x - 2.5, sv.y - 2.5, 5, 5)
+      }
     }
   }
 
@@ -95,11 +121,18 @@ export function render(cx: CanvasRenderingContext2D, w: World, alpha: number, vw
 
   for (const t of w.threats) {
     if (!t.alive) continue
-    drawMachine(cx, t.x, t.y, t.r, t.seed, t.wind)
+    if (t.kind === 'warden') drawWarden(cx, t.x, t.y, t.r, t.wind)
+    else drawMachine(cx, t.x, t.y, t.r, t.seed, t.wind)
     if (t.hp < t.maxHp) {
-      cx.fillStyle = hex(P.harmDim, 0.9); cx.fillRect(t.x - 11, t.y - 19, 22, 2)
-      cx.fillStyle = P.harm; cx.fillRect(t.x - 11, t.y - 19, 22 * (t.hp / t.maxHp), 2)
+      const bw = t.kind === 'warden' ? 44 : 22
+      cx.fillStyle = hex(P.harmDim, 0.9); cx.fillRect(t.x - bw / 2, t.y - t.r - 12, bw, 2)
+      cx.fillStyle = P.harm; cx.fillRect(t.x - bw / 2, t.y - t.r - 12, bw * (t.hp / t.maxHp), 2)
     }
+  }
+
+  if (w.handler?.alive) {
+    const h = w.handler
+    drawHandler(cx, h.prevX + (h.x - h.prevX) * alpha, h.prevY + (h.y - h.prevY) * alpha, h.bob)
   }
 
   // THE ANCHOR (IND-34c). Where the recall puts you. Warm, so it reads as the one
@@ -133,6 +166,21 @@ export function render(cx: CanvasRenderingContext2D, w: World, alpha: number, vw
   const p = w.player
   drawPlayer(cx, p.prevX + (p.x - p.prevX) * alpha, p.prevY + (p.y - p.prevY) * alpha,
              w.t - p.lastHurt < 0.12, p.retreating)
+
+  // ⚠ The world stops at W and H, and past DEEP_X the player is always near the east
+  // boundary, so a hard black rectangle sat in frame for the entire back half of the
+  // game. The ground has to END rather than be CUT ... dust closing in, not a level
+  // running out. Drawn inside the camera transform, over everything, at the four edges.
+  const FADE = 190
+  const band = (x: number, y: number, bw: number, bh: number, x0: number, y0: number, x1: number, y1: number) => {
+    const g = cx.createLinearGradient(x0, y0, x1, y1)
+    g.addColorStop(0, hex(P.void, 0)); g.addColorStop(1, hex(P.void, 0.98))
+    cx.fillStyle = g; cx.fillRect(x, y, bw, bh)
+  }
+  band(WORLD_W - FADE, -400, FADE + 400, WORLD_H + 800, WORLD_W - FADE, 0, WORLD_W, 0)
+  band(-400, -400, FADE + 400, WORLD_H + 800, FADE, 0, 0, 0)
+  band(-400, WORLD_H - FADE, WORLD_W + 800, FADE + 400, 0, WORLD_H - FADE, 0, WORLD_H)
+  band(-400, -400, WORLD_W + 800, FADE + 400, 0, FADE, 0, 0)
 
   cx.restore()
 

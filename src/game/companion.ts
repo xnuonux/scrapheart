@@ -89,6 +89,35 @@ const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
 const dist = (a: {x:number,y:number}, b: {x:number,y:number}) => Math.hypot(a.x - b.x, a.y - b.y)
 
 /**
+ * What the companion can see, in ONE place.
+ *
+ * 🚨 This existed twice ... once in score() and once in act() ... and the copies drifted
+ * the moment one was changed. The scorer learned that IND-34k's heart is visible from
+ * further away (see `pull` below), the actor did not, and the result was a companion
+ * that chose `investigate`, walked to a random point, and never reached the object it
+ * had decided to go to. Measured: 48 of 90 samples in `investigate`, closest approach
+ * 333px. It read as the feature working right up until you checked the distance.
+ *
+ * ⚠ Deciding and acting must perceive identically. If you add a sense, add it here.
+ */
+function perceive(c: Companion, w: World) {
+  const near = w.threats.filter(t => t.alive && dist(c, t) < c.body.gpu)
+                        .sort((a, b) => dist(c, a) - dist(c, b))
+  return {
+    near,
+    nearest: near[0],
+    dT: near[0] ? dist(c, near[0]) : 99999,
+    lootNear: w.salvage.filter(s => dist(c, s) < c.body.gpu)
+                       .sort((a, b) => dist(c, a) - dist(c, b))[0],
+    // pull also extends REACH. A thing that insists harder is noticed from further
+    // away, which is the same statement as "it pulls harder" and needs no second
+    // mechanism. Without it the heart moment was a coin flip: two identical runs
+    // measured 21px (pass) and 161px (fail) with no code change in between.
+    interesting: w.interest.find(i => !i.seen && dist(c, i) < c.body.gpu * (i.pull ?? 1)),
+  }
+}
+
+/**
  * The scorer. Every behaviour is scored from world state and disposition.
  * P0 has one companion, so there is no `other` term yet ... but the prototype proved
  * mutual perception is what produces division of labour, so the signature keeps the
@@ -97,15 +126,9 @@ const dist = (a: {x:number,y:number}, b: {x:number,y:number}) => Math.hypot(a.x 
 export function score(c: Companion, w: World): Record<Behaviour, number> {
   const p = w.player
   const dP = dist(c, p)
-  const near = w.threats.filter(t => t.alive && dist(c, t) < c.body.gpu)
-                        .sort((a, b) => dist(c, a) - dist(c, b))
-  const nearest = near[0]
-  const dT = nearest ? dist(c, nearest) : 99999
+  const { near, nearest, dT, lootNear, interesting } = perceive(c, w)
   const playerHurt = 1 - p.hp / p.maxHp
   const selfHurt = 1 - c.hp / c.maxHp
-  const lootNear = w.salvage.filter(s => dist(c, s) < c.body.gpu)
-                            .sort((a, b) => dist(c, a) - dist(c, b))[0]
-  const interesting = w.interest.find(i => !i.seen && dist(c, i) < c.body.gpu)
 
   const low = c.charge < 0.25 ? 1 : 0   // battery: it fights well and then stops
 
@@ -144,9 +167,15 @@ export function score(c: Companion, w: World): Record<Behaviour, number> {
   // companion a reachable moment without handing a fragmentless machine a
   // disposition it did not earn.
   const dI = interesting ? dist(c, interesting) : 99999
+  // pull: how hard the thing itself insists. 1 for scenery. IND-34k's heart is 5, and
+  // it is the only thing above 1 in the whole game, so a frightened machine will still
+  // cross a field for it. ⚠ Fear damps curiosity but must not be able to erase it,
+  // or the one moment the design actually needs never fires.
+  const pull = interesting?.pull ?? 1
+  const afraid = w.threats.some(t => t.alive && dist(c, t) < 240)
   s.investigate = interesting
-    ? c.curiosity * 2.1 * clamp(1 - dI / c.body.gpu, 0, 1)
-                        * (w.threats.some(t => t.alive && dist(c, t) < 240) ? 0.12 : 1)
+    ? c.curiosity * 2.1 * pull * clamp(1 - dI / (c.body.gpu * pull), 0, 1)
+                        * (afraid ? Math.min(1, 0.12 * pull) : 1)
     : c.curiosity * 0.25 * (near.length === 0 ? 1 : 0)
 
   s.flee = c.caution * 1.3 * selfHurt
@@ -162,6 +191,8 @@ export function score(c: Companion, w: World): Record<Behaviour, number> {
   for (const k of BEHAVIOURS) s[k] = Math.max(0, s[k] + (Math.random() - 0.5) * 0.07)
   return s
 }
+
+export { perceive }
 
 export function decide(c: Companion, w: World, dt: number) {
   c.think -= dt

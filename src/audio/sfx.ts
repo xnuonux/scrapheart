@@ -56,6 +56,10 @@ export const sfx = {
   // IND-34c: leaving. a short downward fall, not a triumphant whoosh. you gave up
   // the room and the sound should know it.
   recall:   () => play('recall',  [1.2, 0.1, 480, 0.02, 0.10, 0.22, , 0.9, -6, , , , , , , 0.2, 0.02, 0.7, 0.04], 0.03, 300),
+  // IND-34k: the warden announcing itself. A two-tone PA chime, the kind a building
+  // plays before it does something routine. ⚠ Not a sting, not a menace cue. If this
+  // sounds like a boss theme the beat is dead ... it has to sound like procedure.
+  announce: () => play('announce', [1.3, 0, 392, 0.02, 0.42, 0.55, , 0.6, , , 262, 0.22, , , , , 0.02, 0.85, 0.28], 0, 2000),
   // IND-34m: one of only two original cues in the whole game. the machine stands up.
   stand:    () => play('stand',   [1.0, 0.1, 220, 0.10, 0.30, 0.45, , 1.1, , , 330, 0.10, 0.06, , , , 0.05, 0.9, 0.15], 0.02, 1000),
 }

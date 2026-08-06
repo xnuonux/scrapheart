@@ -2,7 +2,7 @@
 // mid-journey and never resumed. Densely packed, mostly harmless. The density is the
 // tutorial ... a new player learns what a wreck looks like by standing in ten thousand.
 
-import { Companion, decide, STARTER_BODY } from './companion'
+import { Companion, decide, perceive, STARTER_BODY } from './companion'
 import { Fragment, makeFragment } from './fragments'
 import { sfx } from '../audio/sfx'
 import { hitstop } from '../core/loop'
@@ -24,16 +24,48 @@ export interface Threat {
   wind: number            // the telegraph. built to be safe around humans.
   striking: boolean
   alive: boolean
-  kind: 'runner' | 'stopped'
+  kind: 'runner' | 'stopped' | 'warden'
   seed: number
+  announced?: boolean
 }
 
-export interface Bullet { x: number; y: number; vx: number; vy: number; life: number; from: 'player' | 'comp' }
-export interface Salvage { x: number; y: number; frag: string | null }
+/**
+ * IND-34k. Somebody else's design. No sockets, no fragments, nothing to assemble.
+ * You cannot improve it and you cannot command it. It fights a little, badly, and
+ * it is good company.
+ *
+ * ⚠ It follows you into anything, and you cannot tell it not to. That is not a
+ * scripted behaviour for one beat ... it is what a handler IS, in every zone, forever.
+ */
+export interface Handler {
+  x: number; y: number; prevX: number; prevY: number
+  hp: number; alive: boolean; r: number
+  fireCd: number
+  bob: number
+}
+
+export interface Bullet { x: number; y: number; vx: number; vy: number; life: number; from: 'player' | 'comp' | 'handler' }
+/** IND-34i: a fragment a mind actually lived in has not fully stopped. it glows. */
+export interface Salvage { x: number; y: number; frag: string | null; worn?: number }
 /** IND-34m: things worth finding that are worth nothing. no pickup, no counter. */
-export interface Interest { x: number; y: number; seen: boolean; kind: 'view' | 'arrangement' | 'lamp' }
+export interface Interest {
+  x: number; y: number; seen: boolean; kind: 'view' | 'arrangement' | 'lamp'
+  /**
+   * How hard it pulls. 1 is a nice view. ⚠ IND-34k's heart is the only thing in the
+   * game above 1, because it is the only thing a frightened machine would still cross
+   * a field to look at. A fragment a mind lived in its whole existence is not scenery.
+   */
+  pull?: number
+}
 
 export const W = 1600, H = 1200
+/**
+ * IND-34k step 2: "you go deeper, because the salvage is better and that is the whole
+ * economy." At P0 there is one zone, so deeper is east. ⚠ No wall, no gate, no text,
+ * no warning. The only thing marking it is the corridor of aftermath leading in, and
+ * a player is free to read that as scenery. Everyone keeps going. That is the game.
+ */
+export const DEEP_X = 1080
 
 const dist = (a: {x:number,y:number}, b: {x:number,y:number}) => Math.hypot(a.x - b.x, a.y - b.y)
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
@@ -47,6 +79,11 @@ export class World {
     heat: 0, overheated: 0, fireCd: 0,
   }
   companion: Companion | null = null
+  /** IND-34k: it is just there, and then it is with you. */
+  handler: Handler | null = null
+  handlerMet = false
+  handlerLostAt = -1
+  wardenSpawned = false
   threats: Threat[] = []
   bullets: Bullet[] = []
   salvage: Salvage[] = []
@@ -129,7 +166,91 @@ export class World {
         kind: (['view', 'arrangement', 'lamp'] as const)[Math.floor(r() * 3)],
       })
     }
+    // IND-34k step 3: THE CORRIDOR. Things already destroyed, in a line, leading east.
+    // ⚠ This is the warden's introduction and it needs no text. A player who reads it
+    // correctly slows down. A player who does not is the one the beat is written for,
+    // and there is no penalty for being either.
+    for (let i = 0; i < 26; i++) {
+      const t = i / 25
+      this.wrecks.push({
+        x: 860 + t * 620 + (r() - 0.5) * 70,
+        y: H / 2 + Math.sin(t * 2.4) * 90 + (r() - 0.5) * 80,
+        s: 9 + r() * 13, seed: r() * 1000,
+      })
+    }
+
+    // deeper is worth it. that is the whole economy, and it has to be true or the
+    // player never goes and the beat never happens.
+    for (let i = 0; i < 11; i++) {
+      this.salvage.push({
+        x: DEEP_X + 60 + r() * (W - DEEP_X - 140), y: 110 + r() * (H - 220),
+        frag: i < 7 ? ['inquiry', 'pursuit', 'prudence', 'brace', 'ward', 'mark', 'salvage'][i] : null,
+      })
+    }
+
     for (let i = 0; i < 5; i++) this.spawnThreat(r)
+  }
+
+  /**
+   * IND-34k step 1. Not given, not a quest. It is just there, and then it is with you.
+   * ⚠ No foreshadowing of any kind. No ominous cue, no camera linger, no name in a
+   * quest log. The moment the game signals this is a Sad Beat it becomes one and
+   * stops working.
+   */
+  spawnHandler() {
+    if (this.handler || this.handlerMet) return
+    const p = this.player
+    this.handler = {
+      x: clampW(p.x - 120), y: clampH(p.y + 90),
+      prevX: p.x - 120, prevY: p.y + 90,
+      hp: 30, alive: true, r: 6, fireCd: 0, bob: 0,
+    }
+    this.handlerMet = true
+    this.log('something small is following you.')
+  }
+
+  /**
+   * 🚨 THE PERMANENT RULE, not a scripted death. A warden one-shots a handler. Always,
+   * everywhere, forever.
+   *
+   * Not targeting it. Not malice. The handler is a thing that moves, and a warden's
+   * only surviving instruction is ENGAGE HOSTILES with no definition of hostile left.
+   * It kills the dog with exactly as much feeling as it kills a crate.
+   *
+   * ⚠ Players will try to save it. They must not be able to, or the ones who could not
+   * feel cheated.
+   */
+  killHandler() {
+    const h = this.handler
+    if (!h || !h.alive) return
+    h.alive = false
+    this.handlerLostAt = this.t
+    hitstop(160)
+    sfx.destroy()
+
+    // IND-34k: something in it is still on. The first glowing fragment the player ever
+    // sees, and it belonged to someone they knew.
+    this.salvage.push({ x: h.x, y: h.y, frag: 'heart', worn: 1 })
+    // and it is a thing worth looking at, so the companion's OWN curiosity brings it
+    // there. ⚠ not scripted. the system already does this (see score(): investigate).
+    //
+    // The pull is what makes it survive fear. Measured first pass: with the warden
+    // still alive the threat damping cut investigate to 12% and the companion came no
+    // closer than 118px, so the emotional centre of the beat quietly did not happen.
+    this.interest.push({ x: h.x, y: h.y, seen: false, kind: 'lamp', pull: 5 })
+
+    this.log('it stops moving.')
+  }
+
+  spawnWarden() {
+    if (this.wardenSpawned) return
+    this.wardenSpawned = true
+    const p = this.player
+    this.threats.push({
+      x: clampW(p.x + 300), y: clampH(p.y - 60),
+      r: 26, hp: 340, maxHp: 340, speed: 0.42,
+      wind: 0, striking: false, alive: true, kind: 'warden', seed: 7, announced: false,
+    })
   }
 
   spawnThreat(r = rng(String(this.t))) {
@@ -140,6 +261,30 @@ export class World {
       ...p, r: 10, hp: 34, maxHp: 34, speed: 0.5 + r() * 0.35,
       wind: 0, striking: false, alive: true, kind: 'runner', seed: r() * 1000,
     })
+  }
+
+  /**
+   * Leaving the site, however you left it. ONE implementation, because there are two
+   * ways out (the recall and dying) and they must not drift apart.
+   *
+   * ⚠ They already did. The recall was taught to preserve the warden and the death
+   * path was not, so dying once deleted the warden forever while `wardenSpawned`
+   * stayed true and blocked the respawn. Caught by the IND-34k probe, which got as
+   * far as "you would have died here" and then found no warden and no beat.
+   */
+  resetSite() {
+    // The warden is NOT cleared. It is not a wandering runner, it is a unit clearing an
+    // area, and IND-34k step 8 depends on it: you go back, your choice, no prompt, no
+    // marker, and the scrap is where you left it. An exit that deleted it would turn
+    // leaving into winning.
+    const warden = this.threats.find(t => t.alive && t.kind === 'warden')
+    this.threats = []
+    if (warden) {
+      warden.x = clampW(Math.max(warden.x, DEEP_X + 120)); warden.wind = 0; warden.striking = false
+      this.threats.push(warden)
+    }
+    this.spawnTimer = 4
+    this.bullets = []
   }
 
   /**
@@ -181,10 +326,7 @@ export class World {
       this.companion.prevX = this.companion.x; this.companion.prevY = this.companion.y
     }
 
-    // the site resets. threats disengage and repopulate from the edges.
-    this.threats = []
-    this.spawnTimer = 4
-    this.bullets = []
+    this.resetSite()
 
     this.recallFlash = 1
     this.recallCount++
@@ -214,12 +356,9 @@ export class World {
 function act(c: Companion, w: World, dt: number) {
   const p = w.player
   const speed = 1.55
-  const near = w.threats.filter(t => t.alive && dist(c, t) < c.body.gpu)
-                        .sort((a, b) => dist(c, a) - dist(c, b))
-  const th = near[0]
-  const lootNear = w.salvage.filter(s => dist(c, s) < c.body.gpu)
-                            .sort((a, b) => dist(c, a) - dist(c, b))[0]
-  const interesting = w.interest.find(i => !i.seen && dist(c, i) < c.body.gpu)
+  // ⚠ ONE perception, shared with the scorer. These were two copies and they drifted:
+  // the mind decided to go somewhere the body could not see. See perceive().
+  const { nearest: th, lootNear, interesting } = perceive(c, w)
 
   let tx = p.x, ty = p.y + 26
   c.exposure = 0
@@ -268,6 +407,44 @@ function act(c: Companion, w: World, dt: number) {
   if (c.behaviour === 'investigate' && interesting && dist(c, interesting) < 22) {
     interesting.seen = true
     w.log(`${c.name || 'it'} stopped, and looked at something.`)
+  }
+}
+
+/**
+ * The handler. It follows, and it fights a little, badly.
+ *
+ * ⚠ It must be genuinely good company on its own terms. If it is only there to die,
+ * players feel handled. So it helps in real fights, it keeps pace, and it bobs.
+ */
+function actHandler(h: Handler, w: World, dt: number) {
+  const p = w.player
+  h.prevX = h.x; h.prevY = h.y
+  h.bob += dt * 7
+
+  h.fireCd = Math.max(0, h.fireCd - dt)
+  const th = w.threats.filter(t => t.alive && dist(h, t) < 230)
+                      .sort((a, b) => dist(h, a) - dist(h, b))[0]
+
+  // ⚠ It goes AT things. Not because the beat needs it to ... because that is what it
+  // is. A handler that hangs back behind you is not a handler, it is an escort mission.
+  //
+  // The first probe run found it trailing 42px behind the player, which meant the
+  // PLAYER died to the warden while the handler stood safely in the back. The beat
+  // never fired, and the version of the dog that produced that is also just a worse dog.
+  let tx = p.x, ty = p.y
+  if (th) { tx = th.x; ty = th.y }
+  const dT = Math.hypot(tx - h.x, ty - h.y)
+  const stop = th ? 52 : 42
+  if (dT > stop) {
+    const sp = Math.min(2.4, 1.55 + dT * 0.006)
+    h.x += (tx - h.x) / dT * sp; h.y += (ty - h.y) / dT * sp
+  }
+  h.x = clamp(h.x, 12, W - 12); h.y = clamp(h.y, 12, H - 12)
+  if (th && h.fireCd <= 0) {
+    const a = Math.atan2(th.y - h.y, th.x - h.x) + (Math.random() - 0.5) * 0.34  // badly
+    w.bullets.push({ x: h.x, y: h.y, vx: Math.cos(a) * 330, vy: Math.sin(a) * 330, life: 0.8, from: 'handler' })
+    h.fireCd = 0.55
+    sfx.fire()
   }
 }
 
@@ -322,24 +499,53 @@ export function simulate(
   //    around humans and that safety system is one of the few things still working. ──
   for (const t of w.threats) {
     if (!t.alive) continue
+    const warden = t.kind === 'warden'
+
+    // IND-34k step 5: it announces itself. Politely, because announcing was part of
+    // the procedure. ⚠ No threat, no menace, no villain voice. It is doing its job.
+    if (warden && !t.announced) {
+      t.announced = true
+      sfx.announce()
+      w.log('UNIT 7. AREA IS BEING CLEARED. PLEASE STAND AWAY.')
+    }
+
+    // ⚠ a warden's only surviving instruction is ENGAGE HOSTILES with no definition of
+    // hostile left, so it targets whatever moves and is nearest. it does not prefer
+    // the handler and it does not spare it.
     const targets: { x: number; y: number }[] = [p]
     if (w.companion) targets.push(w.companion)
+    // ⚠ Only a warden counts the handler as a target. Runners ignore it ... it is
+    // another transit machine as far as they are concerned, and if random runners
+    // could kill it the player would spend the first half hour nursing it instead of
+    // enjoying it. The handler has to be good company, not an escort mission.
+    if (warden && w.handler?.alive) targets.push(w.handler)
     const tgt = targets.sort((a, b) => dist(t, a) - dist(t, b))[0]
     const d = dist(t, tgt)
-    if (d < 56) { t.wind += dt; t.striking = t.wind > 0.55 }
+    const reach = warden ? 92 : 56
+    if (d < reach) { t.wind += dt; t.striking = t.wind > (warden ? 0.85 : 0.55) }
     else { t.wind = Math.max(0, t.wind - dt * 2); t.striking = false
            t.x += (tgt.x - t.x) / d * t.speed; t.y += (tgt.y - t.y) / d * t.speed }
-    if (t.striking && t.wind > 0.95) {
+    if (t.striking && t.wind > (warden ? 1.5 : 0.95)) {
       t.wind = 0
-      if (dist(t, tgt) < 58) {
-        if (tgt === p) { p.hp -= 12; p.lastHurt = w.t; sfx.hurt(); hitstop(70) }
-        else if (w.companion) { w.companion.hp -= 12; sfx.hurt() }
+      const hitR = warden ? 96 : 58
+      if (dist(t, tgt) < hitR) {
+        if (tgt === p) { p.hp -= warden ? 30 : 12; p.lastHurt = w.t; sfx.hurt(); hitstop(warden ? 120 : 70) }
+        else if (tgt === w.handler) w.killHandler()
+        else if (w.companion) { w.companion.hp -= warden ? 34 : 12; sfx.hurt() }
       }
     }
+
+    // 🚨 the permanent rule, enforced regardless of what the warden was aiming at.
+    // a handler that is anywhere near a swinging warden dies. always. everywhere.
+    if (warden && w.handler?.alive && dist(t, w.handler) < 78) w.killHandler()
+
     if (t.hp <= 0) {
       t.alive = false
-      w.salvage.push({ x: t.x, y: t.y, frag: Math.random() < 0.22 ? pickFrag() : null })
+      w.salvage.push({ x: t.x, y: t.y, frag: warden ? 'selfpres' : Math.random() < 0.22 ? pickFrag() : null })
       sfx.destroy()
+      // ⚠ and when it stops, nothing is said. no text, no reward screen, no
+      // acknowledgement of what the player just carried into that room.
+      if (warden) hitstop(220)
     }
   }
   w.threats = w.threats.filter(t => t.alive || dist(t, p) < 900)
@@ -353,12 +559,28 @@ export function simulate(
   for (let i = w.salvage.length - 1; i >= 0; i--) {
     if (dist(p, w.salvage[i]) < 18) {
       const s = w.salvage[i]
-      if (s.frag) { w.pack.push(makeFragment(s.frag)); w.log(`recovered: ${makeFragment(s.frag).name}`) }
+      if (s.frag) {
+        const f = makeFragment(s.frag, s.worn ?? 0)
+        w.pack.push(f)
+        w.log(`recovered: ${f.name}`)
+      }
       w.salvage.splice(i, 1); sfx.pickup()
     }
   }
 
   if (w.chassis && !w.chassis.taken && dist(p, w.chassis) < 26) w.takeChassis()
+
+  // ── IND-34k, the beat. Assembled from two permanent rules, introduced once. ──
+  //
+  // step 1: the handler finds you. after the companion is standing, so the player
+  // already knows what a machine of their own feels like.
+  if (!w.handlerMet && w.chassis?.taken && w.t > 40) w.spawnHandler()
+  if (w.handler?.alive) actHandler(w.handler, w, dt)
+
+  // step 4: you keep going. everyone keeps going.
+  // ⚠ the warden is placed, and that is admitted. what must be real is the RULE, and
+  // the rule holds for the rest of the game.
+  if (!w.wardenSpawned && w.handler?.alive && p.x > DEEP_X) w.spawnWarden()
 
   // ── the companion ──
   if (w.companion) {
@@ -377,7 +599,7 @@ export function simulate(
     p.hp = p.maxHp
     p.x = w.anchor.x; p.y = w.anchor.y; p.prevX = p.x; p.prevY = p.y
     p.heat = 0; p.overheated = 0
-    w.threats = []; w.bullets = []; w.spawnTimer = 4
+    w.resetSite()
     w.recallFlash = 1
     w.log(lost ? `you would have died here. ${lost} lost.` : 'you would have died here.')
   }
