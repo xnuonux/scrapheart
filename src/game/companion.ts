@@ -20,9 +20,24 @@ export interface Body {
   cpu: number
   /** perception radius */
   gpu: number
-  /** sustain before it must conserve */
+  /**
+   * ⚠ NOT WIRED AT P0. `charge` on the Companion does the actual battery work (it
+   * drains under sustained activity and gates `low` in the scorer). This capacity stat
+   * is read by nothing. Left in because the organ set is `IND-34c` canon and P1 needs
+   * it, but it is declared here as a promise and not as a behaviour ... the same shape
+   * as `retreating`, which sat declared and unwritten and cost this build its entire
+   * covering system.
+   */
   battery: number
   sockets: number
+  /**
+   * ⚠ ALSO NOT WIRED. `Fragment.shape` marks two fragments 'aux' (IMPACT BRACE,
+   * PRESERVATION) and `install()` never checks it, so shaped sockets do not exist and
+   * an aux fragment currently fits anywhere. **Implementing this at P0 would make
+   * IMPACT BRACE uninstallable**, since the starter body has zero aux sockets, and the
+   * interpose it grants would then come only from the heart. That is a real design
+   * call, not a bug fix, and it belongs to a human.
+   */
   auxSockets: number
 }
 
