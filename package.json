@@ -9,6 +9,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
+    "pack": "node tools/pack-single-file.mjs",
     "check": "tsc --noEmit"
   },
   "dependencies": {

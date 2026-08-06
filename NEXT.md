@@ -226,6 +226,19 @@ Everything below exists only to make that gate answerable.
   `heat <= 0` at 1.2s, but the LOCK is a fixed 2s window, so it returned -1ms three times running.
   Two independent events need two independent records.
 
+## how to play it
+
+**`SCRAPHEART.html`** in this folder. **Double-click it.** No npm, no server, no terminal,
+49 kB, one file. Verified booting from `file://` with zero console noise.
+
+Rebuild it with `npm run pack` after any change.
+
+`WASD` move · `click/hold` fire · `Q` leave · `E` hold near a damaged companion to repair it ·
+`I` pack · `M` mute. On a phone: left thumb is a floating stick, right side fires.
+
+⚠ **The `[Q]` and `[E]` keys carry two of the three systems the gate is testing.** If a watcher
+has to be told about them, that is itself a finding.
+
 ## next, in order
 
 🚨 **Everything buildable from the spec is built. All three remaining items need a human, a
