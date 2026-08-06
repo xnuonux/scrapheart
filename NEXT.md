@@ -22,7 +22,16 @@ Everything below exists only to make that gate answerable.
 - [x] THE HALT: wrecks, salvage, chassis, threats with telegraphs, things worth nothing (`game/world`)
 - [x] heat instead of ammo, overheat lock
 - [x] pack + socket UI, install by click
-- [x] the naming prompt, offered once
+- [x] ~~the naming prompt, offered once~~ ... **REMOVED, see below**
+- [x] 🚨 **THE NAMING BUTTON MADE THE GATE UNMEASURABLE.** The gate is "seven name the companion
+      **unprompted**", and the build shipped a `<button>give it a name</button>` that appeared the
+      moment the machine stood up. ⚠ **A player who clicks a control labelled "give it a name" has
+      followed an instruction. A player who names a thing nobody asked them to name has formed an
+      attachment.** Those are different events, only one is the thing being tested, and the button
+      would have produced a number that looked like a pass. Naming now lives unlabelled in the
+      pack panel where you already assemble the thing: reads `unnamed`, no call to action, absent
+      from the key hints. **Discoverable, never offered.** 5/5 measured, and the game now has zero
+      buttons anywhere.
 - [x] **playtested: chassis in 1.7s, salvage recovered, fragment installed, loyalty 0.15 → 0.45,
       59-60fps, zero errors**
 - [x] **THE RECALL** (`IND-34c`) ... `[Q]`, instant, always available, no cooldown. With it: the
@@ -238,6 +247,10 @@ Rebuild it with `npm run pack` after any change.
 
 ⚠ **The `[Q]` and `[E]` keys carry two of the three systems the gate is testing.** If a watcher
 has to be told about them, that is itself a finding.
+
+🚨 **Do not tell a tester they can name it.** The name field is in the pack panel and it is
+deliberately unlabelled. **The moment you mention it, that player's data is spent** ... they can
+still be watched for everything else, but they no longer count toward the seven.
 
 ## next, in order
 

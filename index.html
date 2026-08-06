@@ -30,6 +30,15 @@
   .kinds{ color:#3f5a80; font-size:10px; letter-spacing:.08em; }
   .slot.empty{ color:#39404d; border-style:dashed; }
   .slot.full{ color:#8fb8ff; }
+  /* the name. ⚠ styled as a LABEL, not as a control ... no button chrome, no cursor
+     hint until hover, nothing that reads as "click me". it is just what the thing is
+     called, and it happens to be editable. */
+  #compname{
+    color:#3f5a80; font:12px ui-monospace,monospace; letter-spacing:.10em;
+    margin:0 0 10px; padding:2px 0; border-bottom:1px solid #232e3a;
+  }
+  #compname.named{ color:#8fb8ff; }
+  #compname:hover{ color:#8fb8ff; cursor:text; }
   #name{
     position:fixed; left:50%; bottom:64px; transform:translateX(-50%); display:none;
     background:rgba(9,12,17,.9); color:#8fb8ff; border:1px solid #3f5a80; border-radius:99px;
@@ -46,8 +55,16 @@
 <body>
   <canvas id="c"></canvas>
   <div id="ui"></div>
-  <button id="name">give it a name</button>
-  <div id="hint">WASD move &nbsp; click/hold fire &nbsp; Q leave &nbsp; I pack &nbsp; M mute</div>
+  <!--
+    🚨 There used to be a <button>give it a name</button> here, and it made the P0 gate
+    unmeasurable. The gate is "seven name the companion UNPROMPTED". A button labelled
+    "give it a name" is a prompt, so every naming it produced would have been an
+    instruction followed rather than an attachment formed, and the number it generated
+    would have looked like a pass.
+    ⚠ Naming still exists. It lives unlabelled in the pack panel, where you assemble the
+    thing anyway. Discoverable, never offered.
+  -->
+  <div id="hint">WASD move &nbsp; click/hold fire &nbsp; Q leave &nbsp; E repair &nbsp; I pack &nbsp; M mute</div>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

@@ -162,6 +162,7 @@ addEventListener('keydown', e => {
 export function refreshPack() {
   const c = world.companion
   ui.innerHTML = `
+    ${c ? `<div id="compname" class="${c.named ? 'named' : ''}">${c.name || 'unnamed'}</div>` : ''}
     <h2>PACK <span class="dim">at risk</span></h2>
     ${world.pack.length === 0 ? '<p class="dim">nothing yet.</p>' : ''}
     ${world.pack.map((f, i) => `
@@ -203,18 +204,32 @@ ui.addEventListener('click', e => {
   }
 })
 
-// naming. the P0 gate is whether people do this unprompted, so it is offered once
-// and never asked for again.
-const nameBtn = document.getElementById('name') as HTMLButtonElement
-setInterval(() => {
-  const c = world.companion
-  nameBtn.style.display = c && !c.named ? 'block' : 'none'
-}, 500)
-nameBtn.onclick = () => {
+/**
+ * 🚨 NAMING, AND WHY THERE IS NO BUTTON.
+ *
+ * The P0 gate is "seven of ten name the companion UNPROMPTED". This used to be a
+ * `<button>give it a name</button>` that appeared the moment the machine stood up.
+ *
+ * ⚠ That button made the gate unmeasurable. A player who clicks a control labelled
+ * "give it a name" has followed an instruction; a player who names a thing nobody asked
+ * them to name has formed an attachment. Those are different events and only one of
+ * them is the thing being tested ... and the button would have produced a number that
+ * looked like a pass.
+ *
+ * So naming lives here instead: the name field in the pack panel, where you are already
+ * assembling the thing. It reads `unnamed` and nothing else. No label, no call to
+ * action, no hint in the key list. **Discoverable, never offered.**
+ */
+ui.addEventListener('click', e => {
+  const el = (e.target as HTMLElement).closest('#compname') as HTMLElement | null
+  if (!el) return
   const c = world.companion; if (!c) return
-  const n = prompt('call it something?')
-  if (n && n.trim()) { c.name = n.trim().slice(0, 14); c.named = true; world.log(`you called it ${c.name}.`) }
-  else c.named = true
-}
+  const n = prompt(c.name ? 'call it what?' : '?')       // ⚠ not a sentence. not an ask.
+  if (n && n.trim()) {
+    c.name = n.trim().slice(0, 14); c.named = true
+    world.log(`you called it ${c.name}.`)
+    refreshPack()
+  }
+})
 
 ;(window as any).world = world
