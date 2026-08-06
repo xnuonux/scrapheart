@@ -2,7 +2,7 @@
 // IND-34m: light does most of the work. Cheapest atmosphere available in 2D.
 
 import { P, hex } from './palette'
-import { drawWreck, drawMachine, drawCompanion, drawPlayer, drawHandler, drawWarden } from './sprites'
+import { drawWreck, drawMachine, drawCompanion, drawPlayer, drawHandler, drawWarden, drawCaster } from './sprites'
 import type { World } from '../game/world'
 import { W as WORLD_W, H as WORLD_H } from '../game/world'
 
@@ -122,6 +122,7 @@ export function render(cx: CanvasRenderingContext2D, w: World, alpha: number, vw
   for (const t of w.threats) {
     if (!t.alive) continue
     if (t.kind === 'warden') drawWarden(cx, t.x, t.y, t.r, t.wind)
+    else if (t.kind === 'caster') drawCaster(cx, t.x, t.y, t.r, t.seed, t.wind)
     else drawMachine(cx, t.x, t.y, t.r, t.seed, t.wind)
     if (t.hp < t.maxHp) {
       const bw = t.kind === 'warden' ? 44 : 22
@@ -153,8 +154,18 @@ export function render(cx: CanvasRenderingContext2D, w: World, alpha: number, vw
     }
   }
 
-  cx.fillStyle = P.lamp
-  for (const b of w.bullets) cx.fillRect(b.x - 1.5, b.y - 1.5, 3, 3)
+  // ⚠ Incoming fire must never be mistaken for your own. Harm is the only saturated
+  // colour in the palette and this is the one place it moves.
+  for (const b of w.bullets) {
+    if (b.from === 'threat') {
+      const g = cx.createRadialGradient(b.x, b.y, 0, b.x, b.y, 11)
+      g.addColorStop(0, hex(P.harm, 0.5)); g.addColorStop(1, hex(P.harm, 0))
+      cx.fillStyle = g; cx.fillRect(b.x - 11, b.y - 11, 22, 22)
+      cx.fillStyle = P.harm; cx.fillRect(b.x - 2.5, b.y - 2.5, 5, 5)
+    } else {
+      cx.fillStyle = P.lamp; cx.fillRect(b.x - 1.5, b.y - 1.5, 3, 3)
+    }
+  }
 
   // IND-34c: it stays where you fell. It waits. And it is VISIBLE in the world ...
   // ⚠ if a player cannot see it from a distance, "go back for it" is a treasure hunt

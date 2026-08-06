@@ -99,6 +99,36 @@ export function drawCompanion(
 }
 
 /**
+ * IND-34n: the caster. Taller and thinner than a runner so the silhouette alone says
+ * "this one does not come to you" at phone size, in a crowd, with no colour cue
+ * (`game-art` silhouette test). Its charge is visible on the body, not just as a ring,
+ * because you read it from across the field rather than from arm's length.
+ */
+export function drawCaster(cx: CanvasRenderingContext2D, x: number, y: number, s: number, seed: number, wind: number) {
+  const r = R(seed | 1)
+  const h = s * 2.0, w = s * 0.62
+  cx.fillStyle = mix(P.machine, P.void, 0.12)
+  cx.fillRect(x - w / 2, y - h * 0.62, w, h)
+  // a tripod, so it reads as planted rather than running
+  for (let i = 0; i < 3; i++) {
+    const a = Math.PI / 2 + (i - 1) * 0.62 + r() * 0.1
+    cx.save(); cx.translate(x, y + h * 0.32); cx.rotate(a)
+    cx.fillRect(0, -1.5, s * 0.95, 3)
+    cx.restore()
+  }
+  cx.fillStyle = hex(P.machineHi, 0.55)
+  cx.fillRect(x - w / 2, y - h * 0.62, w, 2)
+  // the charge, on the emitter
+  if (wind > 0) {
+    cx.fillStyle = hex(P.harm, Math.min(1, wind))
+    const c = 2 + wind * 5
+    cx.fillRect(x - c / 2, y - h * 0.62 - c - 1, c, c)
+    cx.strokeStyle = hex(P.harm, Math.min(0.7, wind * 0.6)); cx.lineWidth = 1
+    cx.beginPath(); cx.arc(x, y - h * 0.2, 14 + wind * 12, 0, Math.PI * 2); cx.stroke()
+  }
+}
+
+/**
  * IND-34k: the handler. Somebody else's design, so it does NOT share the companion's
  * construction language ... no sockets to read, no parts to count. It is warm rather
  * than cold, because it is the only friendly thing in the game the player did not build.

@@ -24,9 +24,16 @@ export interface Threat {
   wind: number            // the telegraph. built to be safe around humans.
   striking: boolean
   alive: boolean
-  kind: 'runner' | 'stopped' | 'warden'
+  /**
+   * IND-34n: `caster` exists because every other shape here is melee, and a field of
+   * pure melee has exactly one verb ... walk away. RotMG's threat reaches you from
+   * 13.5 tiles against a best-in-game weapon at 9.0, and reading patterns at range IS
+   * the game. A caster keeps its distance and shoots, so there is something to dodge.
+   */
+  kind: 'runner' | 'stopped' | 'warden' | 'caster'
   seed: number
   announced?: boolean
+  fireCd?: number
 }
 
 /**
@@ -44,7 +51,10 @@ export interface Handler {
   bob: number
 }
 
-export interface Bullet { x: number; y: number; vx: number; vy: number; life: number; from: 'player' | 'comp' | 'handler' }
+export interface Bullet {
+  x: number; y: number; vx: number; vy: number; life: number
+  from: 'player' | 'comp' | 'handler' | 'threat'
+}
 /** IND-34i: a fragment a mind actually lived in has not fully stopped. it glows. */
 export interface Salvage { x: number; y: number; frag: string | null; worn?: number }
 /** IND-34m: things worth finding that are worth nothing. no pickup, no counter. */
@@ -66,6 +76,27 @@ export const W = 1600, H = 1200
  * a player is free to read that as scenery. Everyone keeps going. That is the game.
  */
 export const DEEP_X = 1080
+
+/**
+ * IND-34n, the whole calibration in one function. 0 at the anchor, 1 at the east edge.
+ *
+ * 🚨 RotMG holds hits-to-die at ~5 across an ENTIRE character life, and gives the first
+ * hour roughly 3x that margin (its opening enemy is 70hp / 9 damage against 150hp ...
+ * sixteen hits). SCRAPHEART was doing the reverse: a flat 12-damage runner from the
+ * first second, seven of them at once, all melee, and a 30-damage warden ten minutes
+ * in. Four consecutive automated runs died in the deep and never once died in the
+ * shallows, which is the curve backwards.
+ *
+ * ⚠ Depth is measured from the PLAYER, not from the threat, so walking east is what
+ * raises the stakes and walking home is what lowers them. There is no wall and no
+ * warning, which is the same rule the salvage already follows.
+ */
+export const depthAt = (x: number) => Math.max(0, Math.min(1, (x - 340) / (W - 480)))
+
+/** damage a runner deals at a given depth. ~14 hits at the anchor, ~4.5 in the deep. */
+const runnerDamage = (d: number) => 7 + d * 15
+/** a caster reaches you. it hits softer than a runner because reach IS the threat. */
+const casterDamage = (d: number) => 6 + d * 10
 
 const dist = (a: {x:number,y:number}, b: {x:number,y:number}) => Math.hypot(a.x - b.x, a.y - b.y)
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
@@ -266,13 +297,34 @@ export class World {
     })
   }
 
-  spawnThreat(r = rng(String(this.t))) {
+  /**
+   * ⚠ ONE persistent runtime stream, drawn sequentially. It used to be
+   * `spawnThreat(r = rng(String(this.t)))`, which built a FRESH seeded generator on
+   * every spawn and only ever read its first value. Adjacent seeds do not produce
+   * independent first draws, so `r() < 0.22 + d * 0.26` stopped behaving like a
+   * probability and became a hard threshold: measured 0% casters below it and 100%
+   * above. Law 7 asks for replayable, not re-seeded.
+   */
+  spawnRng = rng('halt-spawns')
+
+  spawnThreat(r = this.spawnRng) {
+    // ⚠ Threats are built for where the PLAYER is, not for the edge they walk in from.
+    // IND-34n: the opening tier has to carry roughly 3x the margin of the deep, and the
+    // tightening has to be continuous rather than a wall you cross.
+    const d = depthAt(this.player.x)
     const edge = Math.floor(r() * 4)
     const p = edge === 0 ? { x: r() * W, y: -30 } : edge === 1 ? { x: W + 30, y: r() * H }
             : edge === 2 ? { x: r() * W, y: H + 30 } : { x: -30, y: r() * H }
+
+    // casters only exist past the shallows. the first thing a player learns is walking,
+    // and the second is that walking stops being enough.
+    const caster = d > 0.34 && r() < 0.22 + d * 0.26
+    const hp = caster ? 20 + d * 26 : 24 + d * 30
     this.threats.push({
-      ...p, r: 10, hp: 34, maxHp: 34, speed: 0.5 + r() * 0.35,
-      wind: 0, striking: false, alive: true, kind: 'runner', seed: r() * 1000,
+      ...p, r: caster ? 9 : 10, hp, maxHp: hp,
+      speed: caster ? 0.34 + r() * 0.2 : 0.5 + r() * 0.35,
+      wind: 0, striking: false, alive: true,
+      kind: caster ? 'caster' : 'runner', seed: r() * 1000, fireCd: 1.2 + r(),
     })
   }
 
@@ -571,6 +623,21 @@ export function simulate(
     const b = w.bullets[i]
     b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt
     if (b.life <= 0 || b.x < 0 || b.y < 0 || b.x > W || b.y > H) { w.bullets.splice(i, 1); continue }
+
+    // IND-34n: incoming fire. It hits the player and the companion and nothing else,
+    // so a caster is a threat to dodge rather than a threat to out-position.
+    if (b.from === 'threat') {
+      if (dist(b, p) < p.r + 5) {
+        p.hp -= casterDamage(depthAt(p.x)); p.lastHurt = w.t
+        w.bullets.splice(i, 1); sfx.hurt(); hitstop(50); continue
+      }
+      if (w.companion && dist(b, w.companion) < w.companion.r + 5) {
+        w.companion.hp -= casterDamage(depthAt(p.x))
+        w.bullets.splice(i, 1); sfx.hurt(); continue
+      }
+      continue
+    }
+
     for (const t of w.threats) {
       if (!t.alive || Math.hypot(b.x - t.x, b.y - t.y) > t.r + 3) continue
       t.hp -= 12
@@ -607,6 +674,34 @@ export function simulate(
     if (warden && w.handler?.alive) targets.push(w.handler)
     const tgt = targets.sort((a, b) => dist(t, a) - dist(t, b))[0]
     const d = dist(t, tgt)
+
+    // ── IND-34n: the caster. It keeps its distance and shoots, so the fight has a
+    //    second verb. A field of pure melee can only ever be walked away from.
+    if (t.kind === 'caster') {
+      const HOLD = 300                     // outranges the player's ~230px comfortable
+      t.fireCd = Math.max(0, (t.fireCd ?? 0) - dt)
+      if (d > HOLD + 30) { t.x += (tgt.x - t.x) / d * t.speed; t.y += (tgt.y - t.y) / d * t.speed }
+      else if (d < HOLD - 60) { t.x -= (tgt.x - t.x) / d * t.speed; t.y -= (tgt.y - t.y) / d * t.speed }
+      // the wind-up IS the telegraph, same law as everything else here.
+      if (d < HOLD + 90) t.wind = Math.min(1, t.wind + dt * 1.5)
+      else t.wind = Math.max(0, t.wind - dt * 2)
+      if (t.wind >= 1 && (t.fireCd ?? 0) <= 0) {
+        t.wind = 0; t.fireCd = 1.9 + Math.random() * 0.9
+        const a = Math.atan2(tgt.y - t.y, tgt.x - t.x)
+        // ⚠ SLOW. A shot you cannot sidestep is unavoidable damage wearing a costume,
+        // and 34c law 1 says no such thing exists anywhere in this game.
+        w.bullets.push({ x: t.x, y: t.y, vx: Math.cos(a) * 168, vy: Math.sin(a) * 168,
+                         life: 2.6, from: 'threat' })
+        sfx.fire()
+      }
+      if (t.hp <= 0) {
+        t.alive = false
+        w.salvage.push({ x: t.x, y: t.y, frag: Math.random() < 0.30 ? pickFrag() : null })
+        sfx.destroy()
+      }
+      continue
+    }
+
     const reach = warden ? 92 : 56
     if (d < reach) { t.wind += dt; t.striking = t.wind > (warden ? 0.85 : 0.55) }
     else { t.wind = Math.max(0, t.wind - dt * 2); t.striking = false
@@ -615,9 +710,13 @@ export function simulate(
       t.wind = 0
       const hitR = warden ? 96 : 58
       if (dist(t, tgt) < hitR) {
-        if (tgt === p) { p.hp -= warden ? 30 : 12; p.lastHurt = w.t; sfx.hurt(); hitstop(warden ? 120 : 70) }
+        // ⚠ The warden keeps its teeth. IND-34n is explicit that the fix is a gentler
+        // OPENING, not a nerfed exception ... the whole of 34k rests on it being the
+        // thing you leave rather than the thing you beat.
+        const dmg = warden ? 30 : runnerDamage(depthAt(p.x))
+        if (tgt === p) { p.hp -= dmg; p.lastHurt = w.t; sfx.hurt(); hitstop(warden ? 120 : 70) }
         else if (tgt === w.handler) w.killHandler()
-        else if (w.companion) { w.companion.hp -= warden ? 34 : 12; sfx.hurt() }
+        else if (w.companion) { w.companion.hp -= warden ? 34 : dmg; sfx.hurt() }
       }
     }
 
@@ -636,9 +735,14 @@ export function simulate(
   }
   w.threats = w.threats.filter(t => t.alive || dist(t, p) < 900)
 
+  // ⚠ IND-34n: the CROWD is what kills, and a crowd is not a pattern. Seven simultaneous
+  // melee bodies means damage arrives as an unavoidable swarm, which satisfies "everything
+  // is dodgeable" on paper and breaks it in spirit. Fewer bodies, more depth-scaled.
   w.spawnTimer -= dt
-  if (w.spawnTimer <= 0 && w.threats.filter(t => t.alive).length < 7) {
-    w.spawnThreat(); w.spawnTimer = 3.2 + Math.random() * 3
+  const d = depthAt(p.x)
+  const cap = Math.round(3 + d * 3)                  // 3 in the shallows, 6 at the edge
+  if (w.spawnTimer <= 0 && w.threats.filter(t => t.alive).length < cap) {
+    w.spawnThreat(); w.spawnTimer = (4.4 - d * 1.4) + Math.random() * 3
   }
 
   // ── the player picks up what they walk over ──

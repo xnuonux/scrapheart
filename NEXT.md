@@ -48,6 +48,12 @@ Everything below exists only to make that gate answerable.
       expedition because you are now weak, and it does not simply resume: loyalty 0.55 → 0.34,
       caution 0.15 → 0.39, the name survives, and the rest is earned back over about three minutes
       of ordinary company. 12/12 measured.
+- [x] **THE CALIBRATION PASS** (`IND-34n`) ... depth-scaled tiers measured from the PLAYER, so
+      walking east raises the stakes and walking home lowers them, with no wall and no warning.
+      Per-hit margin now spans **12.8 hits at the anchor to 4.5 in the deep (2.8x)**, matching
+      RotMG's shape. Casters added: they hold at 300px and fire slow, dodgeable, red-glowing
+      shots, so the fight finally has a second verb. Crowd cap cut from a flat 7 to 3-in-the-
+      shallows / 6-at-the-edge. 5/5 measured, and every earlier probe re-run green.
 
 ## found by playtesting, fixed
 
@@ -65,6 +71,18 @@ Everything below exists only to make that gate answerable.
   `hp <= 0`, which is false, so the branch never ran and the probe blamed the game. ⚠ **A failing
   assertion is a claim about the probe as much as about the code.** Read the measurement before
   believing either.
+
+- 🚨 **The spawn RNG was re-seeded on every single spawn**, so `r() < 0.22 + depth * 0.26` was not
+  a probability at all. It built a fresh `seedrandom` from `String(this.t)` per call and read only
+  the first value, and adjacent seeds do not give independent first draws. Measured: **0% casters
+  below the threshold and 100% above it.** ⚠ Law 7 asks for *replayable*, not *re-seeded* ... one
+  persistent stream drawn sequentially. Now 0% / 34% / 44% / 45% across the depth bands.
+
+- **Three probes encoded the OLD contract and failed the new one.** The recall probe asserted that
+  banked fragments survive death, which was true of the stub and is now deliberately false. The
+  first-loss probe staged its controlled kill at the player's feet, so the player walked over the
+  heart within two frames and pocketed it. ⚠ **When the design changes, the probes are part of the
+  design.** A red probe is a claim about which of the two is stale, and it is not always the code.
 
 - 🚨 **Calibrated against the real RotMG** (`IND-34n`, extracted from the local install: 33,762
   object records, 5,775 enemies, 12,863 projectiles). Three findings that change the build:
@@ -150,14 +168,7 @@ Everything below exists only to make that gate answerable.
 
 ## next, in order
 
-1. 🚨 **THE CALIBRATION PASS** (`IND-34n`). Highest value item in this file now, because it is the
-   difference between a game that is dire and a game that is unfair, and everything below is
-   polish on top of it.
-   - a gentler opening tier: ~12-16 hits of margin, tightening with depth
-   - **at least one ranged enemy shape**, so the fight has more than one verb
-   - hits-to-die back to ~4-5 against tier-appropriate content, at every tier
-   - fewer simultaneous melee bodies; the crowd is what kills, and a crowd is not a pattern
-2. **Interpose** (`IND-34a`) ... capability + disposition + history, and it destroys the fragment
+1. **Interpose** (`IND-34a`) ... capability + disposition + history, and it destroys the fragment
    that let it. The heart grants it and carries the loyalty, so the bookend is half-built already:
    the first socket the player fills holds something that died, and the last one is emptied by
    something saving them. Needs `careShown` wired to repairs.
