@@ -8,7 +8,7 @@
 // carried forward here.
 
 import { Fragment, effective } from './fragments'
-import type { World } from './world'
+import { isHostile, type World } from './world'
 
 export type Behaviour = 'engage' | 'cover' | 'repair' | 'salvage' | 'follow' | 'investigate' | 'flee'
 export const BEHAVIOURS: Behaviour[] = ['engage', 'cover', 'repair', 'salvage', 'follow', 'investigate', 'flee']
@@ -126,7 +126,9 @@ function perceive(c: Companion, w: World) {
   // companion decides and acts on the same half-blind world. A high-GPU build is
   // suddenly your eyes and a low one is a liability you love.
   const gpu = c.body.gpu * (1 - 0.62 * w.dustAt(c))
-  const near = w.threats.filter(t => t.alive && dist(c, t) < gpu)
+  // ⚠ isHostile, not `.alive`. A machine that gave up is in the same array and is not a
+  // threat, and counting it made the companion afraid of furniture.
+  const near = w.threats.filter(t => isHostile(t) && dist(c, t) < gpu)
                         .sort((a, b) => dist(c, a) - dist(c, b))
   return {
     gpu,
@@ -202,7 +204,10 @@ export function score(c: Companion, w: World): Record<Behaviour, number> {
   // cross a field for it. ⚠ Fear damps curiosity but must not be able to erase it,
   // or the one moment the design actually needs never fires.
   const pull = interesting?.pull ?? 1
-  const afraid = w.threats.some(t => t.alive && dist(c, t) < 240)
+  // 🚨 The worst instance of the furniture bug: standing near a machine that gave up
+  // damped investigate to 12%, so the objects that ARE the atmosphere were switching
+  // the atmosphere system off.
+  const afraid = w.threats.some(t => isHostile(t) && dist(c, t) < 240)
   s.investigate = interesting
     ? c.curiosity * 2.1 * pull * clamp(1 - dI / (gpu * pull), 0, 1)
                         * (afraid ? Math.min(1, 0.12 * pull) : 1)

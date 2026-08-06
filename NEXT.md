@@ -117,6 +117,18 @@ Everything below exists only to make that gate answerable.
          `drawCompanion`'s `hurt` parameter ... **hardcoded to 0, so the damage state the gate
          depends on was never once drawn** ... is wired: it dims and its light stutters.
       5/5 after, and the handler now survives a full run.
+- [x] 🚨 **THE FURNITURE BUG.** `IND-34l`'s stopped ones share the `Threat` type because they are
+      shootable salvage, so **every `threats` filter written before they existed silently counted
+      them**: the companion scored `flee` against a machine that gave up, the handler charged over
+      to shoot furniture, and repairing beside one counted as "under fire". ⚠ **Worst of all,
+      standing near one damped `investigate` to 12%, so the objects that ARE the atmosphere were
+      switching the atmosphere system off.** One `isHostile()` predicate now. 5/5: the companion
+      reached 20px of a beautiful thing while parked beside a stopped machine, never fled it,
+      never shot it, and the handler stayed at 0px from the player.
+- [x] **THE SOAK** ... the gate is an hour and nothing had ever run past three minutes. An hour of
+      kills with nothing collected: **1234 salvage entries at a flat 60fps**, worst frame 50.9ms.
+      Six real minutes of continuous play: **60fps, heap flat at 10MB (0.00 MB/min)**, salvage
+      growing 6.4/min (~382 over a full session). Nothing unbounded.
 - [x] **The single damage door.** All three player-damage paths route through `hurtPlayer()`, so
       the interposition cannot be true on one and silently absent on another.
 

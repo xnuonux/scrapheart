@@ -158,6 +158,20 @@ const runnerDamage = (d: number) => 7 + d * 15
 const casterDamage = (d: number) => 6 + d * 10
 
 const dist = (a: {x:number,y:number}, b: {x:number,y:number}) => Math.hypot(a.x - b.x, a.y - b.y)
+
+/**
+ * 🚨 Is this thing a THREAT, or is it furniture that happens to live in the same array?
+ *
+ * `IND-34l`'s stopped ones share the Threat type because they are shootable and they
+ * are salvage. They are not dangerous and they never do anything. ⚠ Every `threats`
+ * filter written before they existed silently counts them, which meant the companion
+ * scored `flee` against a machine that gave up, the handler charged over to shoot
+ * furniture, and standing near one **suppressed curiosity** ... so the objects that ARE
+ * the atmosphere were switching the atmosphere system off.
+ *
+ * One predicate. If a fourth kind ever arrives, it declares itself here.
+ */
+export const isHostile = (t: Threat) => t.alive && t.kind !== 'stopped'
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
 const clampW = (v: number) => clamp(v, 40, W - 40)
 const clampH = (v: number) => clamp(v, 40, H - 40)
@@ -746,7 +760,8 @@ function actHandler(h: Handler, w: World, dt: number) {
   h.bob += dt * 7
 
   h.fireCd = Math.max(0, h.fireCd - dt)
-  const th = w.threats.filter(t => t.alive && dist(h, t) < 230)
+  // ⚠ it does not charge machines that gave up. it is brave, not confused.
+  const th = w.threats.filter(t => isHostile(t) && dist(h, t) < 230)
                       .sort((a, b) => dist(h, a) - dist(h, b))[0]
 
   // ⚠ It goes AT things. Not because the beat needs it to ... because that is what it
@@ -806,7 +821,8 @@ function mend(w: World, dt: number, holding: boolean) {
   c.hp = Math.min(c.maxHp, c.hp + dt * 16)
 
   const hurt = 1 - c.hp / c.maxHp
-  const danger = w.threats.some(t => t.alive && dist(t, p) < 220) ? 2.6 : 1
+  // ⚠ repairing next to a machine that gave up is not brave, it is quiet.
+  const danger = w.threats.some(t => isHostile(t) && dist(t, p) < 220) ? 2.6 : 1
   c.careShown += dt * 0.30 * (0.35 + hurt) * danger
 
   if (c.hp >= c.maxHp && w.mending > 0.2) {
