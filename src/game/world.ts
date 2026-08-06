@@ -848,7 +848,29 @@ export function simulate(
   p.prevX = p.x; p.prevY = p.y
   p.x = clamp(p.x + mv.x * 2.5, 12, W - 12)
   p.y = clamp(p.y + mv.y * 2.5, 12, H - 12)
-  p.retreating = false
+
+  // 🚨 ARE YOU FALLING BACK?
+  //
+  // This line used to read `p.retreating = false` and nothing anywhere ever set it
+  // true. `s.cover` is gated entirely on it, so COVERING ... "when you retreat, a brave
+  // companion advances", which `IND-34c` calls **the entire emotional engine of this
+  // game** ... scored zero on every frame since the first commit and has never once
+  // fired. The retreat ring in drawPlayer never drew either.
+  //
+  // ⚠ It is inferred, never a button: you are retreating if you are moving AWAY from
+  // something close enough to matter. The scorer already sees your movement, exactly as
+  // 34c says it should, and no special case is needed anywhere else.
+  {
+    const nearT = w.threats.filter(isHostile)
+                           .sort((a, b) => dist(p, a) - dist(p, b))[0]
+    const moving = mv.x !== 0 || mv.y !== 0
+    if (nearT && moving && dist(p, nearT) < 330) {
+      // dot product of movement against the direction away from the threat
+      const ax = p.x - nearT.x, ay = p.y - nearT.y
+      const m = Math.hypot(ax, ay) || 1
+      p.retreating = (mv.x * ax + mv.y * ay) / m > 0.35
+    } else p.retreating = false
+  }
 
   // IND-34j: heat, not ammo. sustained fire locks the weapon for ~2s.
   p.fireCd = Math.max(0, p.fireCd - dt)

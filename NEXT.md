@@ -129,6 +129,19 @@ Everything below exists only to make that gate answerable.
       kills with nothing collected: **1234 salvage entries at a flat 60fps**, worst frame 50.9ms.
       Six real minutes of continuous play: **60fps, heap flat at 10MB (0.00 MB/min)**, salvage
       growing 6.4/min (~382 over a full session). Nothing unbounded.
+- [x] 🚨 **COVERING HAD NEVER FIRED ONCE.** `p.retreating` was assigned `false` every frame and set
+      `true` **nowhere in the codebase**, and `s.cover` is gated entirely on it. So *"when you
+      retreat, a brave companion advances"* ... which `IND-34c` calls **the entire emotional engine
+      of this game** ... scored zero on every frame since the first commit. The retreat ring in
+      `drawPlayer` never drew either. ⚠ **A field that is declared, read, and never written reads
+      as a working feature in every code review.**
+      Retreat is now inferred from movement away from something close (never a button, exactly as
+      `34c` asks). And once it worked, cover *still* lost, because the shape was wrong: **cover
+      decayed with distance while follow grew with it**, so a player falling back always outran
+      their own companion's bravery. Wider radius, stronger pull. Measured 5/5 with a control:
+      **loyalty 0.7 covers 15/30 samples and advances 47px toward the threat while you fall back;
+      loyalty 0.15 never covers at all.** *You did not order it to cover you. You built something
+      that would.*
 - [x] **The single damage door.** All three player-damage paths route through `hurtPlayer()`, so
       the interposition cannot be true on one and silently absent on another.
 

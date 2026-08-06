@@ -172,8 +172,16 @@ export function score(c: Companion, w: World): Record<Behaviour, number> {
 
   // IND-34c: when you retreat, a brave companion advances. No special case needed:
   // the scorer already sees the player's movement.
-  s.cover = c.loyalty * 1.30 * (p.retreating ? 1 : 0) * (nearest ? clamp(1 - dT / 260, 0, 1) : 0)
-          - c.caution * 0.85
+  // ⚠ Once `retreating` started working, cover STILL never won, and the reason is the
+  // shape rather than the size: cover DECAYS with distance while follow GROWS with it,
+  // so a player falling back always outruns their own companion's bravery. Measured at
+  // loyalty 0.7 it peaked at 0.027 against a follow score climbing past 1.0.
+  //
+  // Wider radius, stronger pull, lighter caution penalty. At loyalty 0.7 it now beats
+  // follow decisively; at the starter's 0.15 it does not come close ... which is the
+  // whole point. **You did not order it to cover you. You built something that would.**
+  s.cover = c.loyalty * 2.20 * (p.retreating ? 1 : 0) * (nearest ? clamp(1 - dT / 400, 0, 1) : 0)
+          - c.caution * 0.50
           - low * 0.5
 
   s.repair = c.can.repair
