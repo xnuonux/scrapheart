@@ -35,7 +35,13 @@ startLoop({
   simulate: dt => {
     const mv = input.axis2d()
     const firing = input.down('fire')
-    simulate(world, dt, mv, firing, input.hasAim ? input.aim : { x: world.player.x + 1, y: world.player.y })
+    // IND-34c: instant, always available, no cooldown. `pressed` not `down`, so it
+    // fires on the edge and cannot be held.
+    const recalling = input.pressed('recall')
+    simulate(world, dt, mv, firing,
+             input.hasAim ? input.aim : { x: world.player.x + 1, y: world.player.y },
+             recalling)
+    if (recalling) { cam.x = world.player.x; cam.y = world.player.y }
     updateCamera(world, dt)
     if (world.player.hp < lastHp) addTrauma(0.45)
     lastHp = world.player.hp
@@ -94,11 +100,19 @@ function drawHud() {
     cx.fillText(l.text, vw - 16, 26 + i * 15)
   })
 
-  // pack count
+  // THE STAKE (IND-34c). The one place the game says the quiet part: what you are
+  // holding can be lost, and one button keeps it. Four words teach the whole economy,
+  // so this is the single piece of instructional text the P0 gets.
+  cx.textAlign = 'left'
+  // ⚠ the static hint bar already lists the keys. this line says the STAKE and
+  // nothing else, and it appears only while there is something to lose.
   if (world.pack.length) {
-    cx.textAlign = 'left'
-    cx.fillStyle = hex(P.glow, 0.85)
-    cx.fillText(`${world.pack.length} in pack  [I]`, 16, vh - 56)
+    cx.fillStyle = hex(P.glow, 0.9)
+    cx.fillText(`carrying ${world.pack.length}  ...  [Q] to keep`, 16, vh - 56)
+  }
+  if (world.banked.length) {
+    cx.fillStyle = hex(P.lamp, 0.6)
+    cx.fillText(`${world.banked.length} kept`, 16, vh - 70)
   }
 }
 
@@ -114,7 +128,7 @@ addEventListener('keydown', e => {
 export function refreshPack() {
   const c = world.companion
   ui.innerHTML = `
-    <h2>PACK</h2>
+    <h2>PACK <span class="dim">at risk</span></h2>
     ${world.pack.length === 0 ? '<p class="dim">nothing yet.</p>' : ''}
     ${world.pack.map((f, i) => `
       <div class="frag" data-i="${i}">
@@ -124,21 +138,31 @@ export function refreshPack() {
       </div>`).join('')}
     ${c ? `<h2>SOCKETS</h2>${c.installed.map((f, i) =>
       `<div class="slot ${f ? 'full' : 'empty'}" data-s="${i}">${f ? f.name : 'empty'}</div>`).join('')}` : ''}
+    ${world.banked.length ? `<h2>KEPT <span class="dim">safe</span></h2>${world.banked.map((f, i) =>
+      `<div class="frag kept" data-k="${i}"><b>${f.name}</b><span class="dim">${f.provenance}</span>
+       <span class="kinds">${f.kinds.join(' · ')}</span></div>`).join('')}` : ''}
   `
 }
 setInterval(refreshPack, 400)
 
-let selected = -1
+// selection carries WHICH list it came from. a kept fragment is installable too ...
+// banking that made a part unusable would just be a worse pocket.
+let selected: { from: 'pack' | 'banked'; i: number } | null = null
 ui.addEventListener('click', e => {
   const t = e.target as HTMLElement
   const fragEl = t.closest('.frag') as HTMLElement | null
   const slotEl = t.closest('.slot') as HTMLElement | null
-  if (fragEl) { selected = +fragEl.dataset.i!; ui.querySelectorAll('.frag').forEach(el => el.classList.remove('sel')); fragEl.classList.add('sel') }
-  else if (slotEl && selected >= 0 && world.companion) {
+  if (fragEl) {
+    const k = fragEl.dataset.k
+    selected = k !== undefined ? { from: 'banked', i: +k } : { from: 'pack', i: +fragEl.dataset.i! }
+    ui.querySelectorAll('.frag').forEach(el => el.classList.remove('sel'))
+    fragEl.classList.add('sel')
+  } else if (slotEl && selected && world.companion) {
     const s = +slotEl.dataset.s!
-    const f = world.pack[selected]
+    const list = selected.from === 'pack' ? world.pack : world.banked
+    const f = list[selected.i]
     if (f && world.companion.install(f, s)) {
-      world.pack.splice(selected, 1); selected = -1
+      list.splice(selected.i, 1); selected = null
       world.log(`installed: ${f.name}`)
       refreshPack()
     }

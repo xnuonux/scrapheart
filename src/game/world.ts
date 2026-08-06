@@ -52,12 +52,23 @@ export class World {
   salvage: Salvage[] = []
   interest: Interest[] = []
   wrecks: { x: number; y: number; s: number; seed: number }[] = []
+  /** what you are carrying. AT RISK. death takes all of it. */
   pack: Fragment[] = []
+  /** what you carried home. SAFE. the only thing the recall buys you. */
+  banked: Fragment[] = []
   chassis: { x: number; y: number; taken: boolean } | null = null
 
   t = 0
   logs: { text: string; t: number }[] = []
   spawnTimer = 3
+
+  /** IND-34c: the anchor the recall returns you to. */
+  anchor = { x: W / 2, y: H / 2 }
+  /** rises to 1 on recall, decays. purely visual. */
+  recallFlash = 0
+  recallCount = 0
+  /** salvage left behind by recalls. the receipt for what greed did not get. */
+  abandoned = 0
 
   log(text: string) {
     this.logs.unshift({ text, t: this.t })
@@ -123,6 +134,58 @@ export class World {
       ...p, r: 10, hp: 34, maxHp: 34, speed: 0.5 + r() * 0.35,
       wind: 0, striking: false, alive: true, kind: 'runner', seed: r() * 1000,
     })
+  }
+
+  /**
+   * IND-34c: the single most important mechanic in the game, and it is a button that
+   * removes you from danger.
+   *
+   * Instant. Always available. No cooldown, no channel, never blocked.
+   *
+   * "This is what makes permadeath fair rather than cruel. You can leave at any
+   *  moment. So nothing kills you but greed, and every death is a decision you made."
+   *
+   * ⚠ NEVER add a cooldown, a channel time, or a boss-room block. Every one of those
+   * turns a game about the player's judgement into a game about the designer's.
+   *
+   * The cost is the room: what you did not pick up stays out there, and the site
+   * repopulates.
+   *
+   * What it BUYS is the pack. Carried fragments are at risk until they are banked,
+   * and the recall is the only thing that banks them. Without that, this is a
+   * teleport and the whole risk economy is decorative.
+   */
+  recall() {
+    const p = this.player
+    // count what greed did not get, before the site resets
+    const left = this.salvage.filter(s => dist(s, p) < 420).length
+    this.abandoned += left
+
+    // THE BANK. this is the entire point of the button.
+    const carried = this.pack.length
+    if (carried) { this.banked.push(...this.pack); this.pack = [] }
+
+    p.x = this.anchor.x; p.y = this.anchor.y
+    p.prevX = p.x; p.prevY = p.y
+    p.heat = 0; p.overheated = 0
+
+    // the companion comes with you. it is yours and it was standing next to you.
+    if (this.companion) {
+      this.companion.x = this.anchor.x - 22; this.companion.y = this.anchor.y + 18
+      this.companion.prevX = this.companion.x; this.companion.prevY = this.companion.y
+    }
+
+    // the site resets. threats disengage and repopulate from the edges.
+    this.threats = []
+    this.spawnTimer = 4
+    this.bullets = []
+
+    this.recallFlash = 1
+    this.recallCount++
+    sfx.recall()
+    // one line, and it names both halves of the trade.
+    if (carried) this.log(`you left. ${carried} kept${left ? `, ${left} still out there` : ''}.`)
+    else this.log(left > 0 ? `you left with nothing. ${left} still out there.` : 'you left.')
   }
 
   takeChassis() {
@@ -202,9 +265,17 @@ function act(c: Companion, w: World, dt: number) {
   }
 }
 
-export function simulate(w: World, dt: number, mv: { x: number; y: number }, firing: boolean, aim: { x: number; y: number }) {
+export function simulate(
+  w: World, dt: number, mv: { x: number; y: number }, firing: boolean,
+  aim: { x: number; y: number }, recalling = false,
+) {
   w.t += dt
   const p = w.player
+
+  // ⚠ handled FIRST, before movement, threats or anything else can intervene.
+  // The recall is instant or it is not a recall.
+  if (recalling) w.recall()
+  w.recallFlash = Math.max(0, w.recallFlash - dt * 2.2)
 
   // ── player ──
   p.prevX = p.x; p.prevY = p.y
@@ -290,7 +361,20 @@ export function simulate(w: World, dt: number, mv: { x: number; y: number }, fir
     if (w.companion.hp <= 0) { w.companion.hp = 1; w.log(`${w.companion.name || 'it'} is badly damaged.`) }
   }
 
-  if (p.hp <= 0) { p.hp = p.maxHp; w.log('you would have died here.') }
+  // Death is still a stub (the real one lands with THE FIRST LOSS), but the COST is
+  // real now, because it is what gives the recall its meaning. Carried is lost.
+  // ⚠ Not dropped on the ground to be retrieved ... that is a different game. IND-34
+  // is ROTMG permadeath: what you had is gone.
+  if (p.hp <= 0) {
+    const lost = w.pack.length
+    w.pack = []
+    p.hp = p.maxHp
+    p.x = w.anchor.x; p.y = w.anchor.y; p.prevX = p.x; p.prevY = p.y
+    p.heat = 0; p.overheated = 0
+    w.threats = []; w.bullets = []; w.spawnTimer = 4
+    w.recallFlash = 1
+    w.log(lost ? `you would have died here. ${lost} lost.` : 'you would have died here.')
+  }
 }
 
 const FRAG_POOL = ['attend', 'repair', 'salvage', 'ward', 'prudence', 'pursuit', 'inquiry', 'brace', 'selfpres', 'mark']

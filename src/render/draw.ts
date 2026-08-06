@@ -102,6 +102,24 @@ export function render(cx: CanvasRenderingContext2D, w: World, alpha: number, vw
     }
   }
 
+  // THE ANCHOR (IND-34c). Where the recall puts you. Warm, so it reads as the one
+  // safe thing in a cold field without a single word of tutorial. It has to be
+  // VISIBLE or "home" is just a coordinate the player never learns.
+  {
+    const a = w.anchor
+    const breathe = 0.5 + Math.sin(w.t * 0.9) * 0.12
+    const g = cx.createRadialGradient(a.x, a.y, 0, a.x, a.y, 70)
+    g.addColorStop(0, hex(P.lamp, 0.14 * breathe)); g.addColorStop(1, hex(P.lamp, 0))
+    cx.fillStyle = g; cx.fillRect(a.x - 70, a.y - 70, 140, 140)
+    cx.strokeStyle = hex(P.lamp, 0.34); cx.lineWidth = 1
+    cx.beginPath(); cx.arc(a.x, a.y, 26, 0, Math.PI * 2); cx.stroke()
+    cx.fillStyle = hex(P.lamp, 0.7)
+    for (let i = 0; i < 4; i++) {
+      const th = i * Math.PI / 2 + Math.PI / 4
+      cx.fillRect(a.x + Math.cos(th) * 26 - 1, a.y + Math.sin(th) * 26 - 1, 2, 2)
+    }
+  }
+
   cx.fillStyle = P.lamp
   for (const b of w.bullets) cx.fillRect(b.x - 1.5, b.y - 1.5, 3, 3)
 
@@ -122,4 +140,16 @@ export function render(cx: CanvasRenderingContext2D, w: World, alpha: number, vw
   const vg = cx.createRadialGradient(vw / 2, vh / 2, Math.min(vw, vh) * 0.30, vw / 2, vh / 2, Math.max(vw, vh) * 0.72)
   vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.78)')
   cx.fillStyle = vg; cx.fillRect(0, 0, vw, vh)
+
+  // IND-34c: the recall. cold, not triumphant. the world goes away for a moment and
+  // comes back somewhere quieter. it closes IN rather than flashing out, because
+  // leaving is a contraction and the screen should agree with the fiction.
+  if (w.recallFlash > 0) {
+    const f = w.recallFlash
+    cx.fillStyle = hex(P.void, f * 0.85)
+    cx.fillRect(0, 0, vw, vh)
+    const rg = cx.createRadialGradient(vw / 2, vh / 2, 0, vw / 2, vh / 2, Math.max(vw, vh) * 0.5 * (1 - f * 0.7))
+    rg.addColorStop(0, hex(P.comp, f * 0.16)); rg.addColorStop(1, hex(P.comp, 0))
+    cx.fillStyle = rg; cx.fillRect(0, 0, vw, vh)
+  }
 }
