@@ -31,6 +31,11 @@ Everything below exists only to make that gate answerable.
       banks the pack · moves 357px within 2 frames · lands on the anchor · site resets ·
       the companion comes with you · 5/5 presses registered under the overheat lock ·
       death takes carried and leaves kept. 60fps, zero errors.
+- [x] **Curiosity reachable** ... `interestSeen` went 0 → 1 in a normal opening run, and the log now
+      reads as a story: *it stands up · it stopped, and looked at something · recovered:
+      ATTENDANCE · it broke off · it is badly damaged.*
+- [x] **RAM actually gates** (found while fixing the above, see below)
+- [x] **Log dedup** ... a repeated line refreshes its timestamp instead of stacking.
 
 ## found by playtesting, fixed
 
@@ -49,6 +54,25 @@ Everything below exists only to make that gate answerable.
   assertion is a claim about the probe as much as about the code.** Read the measurement before
   believing either.
 
+- **RAM was decorative, and RAM is the signature mechanic of the whole game.** Measured: the
+  chosen behaviour matched the top scorer in **241 of 241 samples**. The warm set was recomputed
+  every tick as the top-`ram` slice of the *same ranking it was meant to constrain*, so `ranked[0]`
+  was warm by construction and could never be gated. ⚠ **A limit derived from the thing it limits
+  is not a limit.** Fixed by making the warm set persist with a reload window. Now measured by
+  shock test: RAM 2 evicts `investigate` to load `flee` (150ms), RAM 7 drops nothing and reacts
+  in 0ms. The felt consequence is the right one ... **a small mind stops noticing beautiful
+  things when it gets frightened.**
+
+- **Curiosity was arithmetically impossible, not merely rare.** `investigate` peaked at 0.175
+  against a `follow` FLOOR of 0.285. No amount of play would ever have surfaced it. Fixed with a
+  proximity term (a curious machine is drawn to what is *right there*, not to everything in its
+  radius) and by dropping follow's floor, since a machine at your shoulder does not need to want
+  to follow you.
+
+- **The log said "it broke off." six times in a row.** Transitions oscillate by design (the scorer
+  has jitter) and every entry logged. ⚠ A repeated line trains the player to stop reading the log,
+  which costs every message that matters ... including the ones the P0 gate depends on.
+
 - **Overheat is nearly unreachable, so the heat mechanic is currently decorative.** Measured: heat
   climbs ~0.27/s net (the decay branch runs on every frame between shots), so the lock needs
   ~3.7s of *continuous* fire. Two probe runs at 2.6s never once tripped it. Nobody holds fire that
@@ -56,10 +80,7 @@ Everything below exists only to make that gate answerable.
 
 ## next, in order
 
-1. **Curiosity must be reachable early.** ⚠ Playtest showed `interestSeen: 0` ... with RAM 2 and base
-   curiosity 0.15, the companion never investigates, so the entire atmosphere system is invisible.
-   Either the starter has a little curiosity, or the first buried find is scripted (`IND-34i` §risks).
-2. **THE FIRST LOSS** (`IND-34k`) ... the handler, the warden, the corridor of aftermath, the glowing
+1. **THE FIRST LOSS** (`IND-34k`) ... the handler, the warden, the corridor of aftermath, the glowing
    heart, the empty socket filled by something that died. **The emotional spine of the P0.**
    Death is still a stub (`you would have died here`) ... it costs the pack now, but it does not
    end anything.

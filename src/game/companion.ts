@@ -43,6 +43,8 @@ export class Companion {
   warm = new Set<Behaviour>()
   /** decide() lives outside the class, so this cannot be private */
   think = 0
+  /** the reload window. a warm slot cannot be swapped again until this drains. */
+  swapCd = 0
   exposure = 0
   repairCd = 0
   charge = 1        // battery drain under sustained activity
@@ -131,8 +133,20 @@ export function score(c: Companion, w: World): Record<Behaviour, number> {
 
   // IND-34i: curiosity is what finds what is buried, and IND-34m: it is what stops
   // at a thing worth nothing.
+  //
+  // ⚠ Measured 2026-08-06, 241 samples with the field cleared and an interest point
+  // touching the companion: investigate peaked at 0.175 against a follow FLOOR of
+  // 0.285, so it was never once chosen. The entire atmosphere system was unreachable
+  // at starter curiosity ... which is the only curiosity a new player has.
+  //
+  // The fix is proximity. A curious machine is not equally drawn to everything in
+  // its perception radius; it is drawn to what is right there. That gives the early
+  // companion a reachable moment without handing a fragmentless machine a
+  // disposition it did not earn.
+  const dI = interesting ? dist(c, interesting) : 99999
   s.investigate = interesting
-    ? c.curiosity * 0.95 * (w.threats.some(t => t.alive && dist(c, t) < 240) ? 0.12 : 1)
+    ? c.curiosity * 2.1 * clamp(1 - dI / c.body.gpu, 0, 1)
+                        * (w.threats.some(t => t.alive && dist(c, t) < 240) ? 0.12 : 1)
     : c.curiosity * 0.25 * (near.length === 0 ? 1 : 0)
 
   s.flee = c.caution * 1.3 * selfHurt
@@ -140,7 +154,9 @@ export function score(c: Companion, w: World): Record<Behaviour, number> {
          + low * 0.6
          - c.loyalty * 0.55 * (playerHurt > 0.5 ? 1 : 0)   // loyalty overrides self-preservation
 
-  s.follow = 0.32 + clamp((dP - 130) / 240, 0, 1) * 0.8
+  // follow had a hard floor of 0.32 that nothing early could clear. A machine standing
+  // at your shoulder does not need to want to follow you ... it is already there.
+  s.follow = 0.10 + clamp((dP - 90) / 240, 0, 1) * 1.0
 
   // jitter: never robotic. game-ai.
   for (const k of BEHAVIOURS) s[k] = Math.max(0, s[k] + (Math.random() - 0.5) * 0.07)
@@ -155,17 +171,46 @@ export function decide(c: Companion, w: World, dt: number) {
   const raw = score(c, w)
   const ranked = (Object.entries(raw) as [Behaviour, number][]).sort((a, b) => b[1] - a[1])
 
-  // RAM: only the top `ram` behaviours stay warm. The rest are DROPPED and cannot be
-  // chosen at all, however much the situation needs them. The prototype showed this is
-  // the most legible thing in the whole system.
-  const warm = new Set(ranked.slice(0, c.body.ram).map(e => e[0]))
+  // RAM: only what is WARM can be chosen. The rest are dropped and cannot be acted on,
+  // however much the situation needs them.
+  //
+  // ⚠ Measured 2026-08-06: the pick matched the top scorer in 241 of 241 samples. The
+  // warm set was recomputed each tick as the top-`ram` slice of the SAME ranking it was
+  // meant to constrain, so ranked[0] was warm by construction and RAM gated nothing.
+  // The signature mechanic of the whole game was an ornament.
+  //
+  // The warm set is what the machine is currently holding in mind, so it PERSISTS, and
+  // loading something new takes time. That is what makes a low-RAM companion visibly
+  // slow to react and a RAM upgrade something you feel rather than read.
   const wasWarmRepair = c.warm.has('repair')
+  if (c.warm.size === 0) for (const e of ranked.slice(0, c.body.ram)) c.warm.add(e[0])
 
-  c.scores = raw; c.warm = warm
+  c.swapCd = Math.max(0, c.swapCd - 0.10 / Math.max(0.25, c.body.cpu))
+  while (c.warm.size > c.body.ram) {
+    // RAM shrank (a fragment came out). Shed the coldest immediately.
+    const worst = [...c.warm].sort((a, b) => raw[a] - raw[b])[0]
+    c.warm.delete(worst)
+  }
+  if (c.swapCd <= 0) {
+    const wants = ranked.slice(0, c.body.ram).map(e => e[0])
+    const newcomer = wants.find(b => !c.warm.has(b))
+    if (newcomer) {
+      if (c.warm.size >= c.body.ram) {
+        const worst = [...c.warm].sort((a, b) => raw[a] - raw[b])[0]
+        c.warm.delete(worst)
+      }
+      c.warm.add(newcomer)
+      c.swapCd = 1                              // one swap per reload window
+    }
+  }
+
+  const warm = c.warm
+  c.scores = raw
   const pick = ranked.find(e => warm.has(e[0]))
   const prev = c.behaviour
   c.behaviour = pick ? pick[0] : 'follow'
 
+  // one place, so eviction and RAM shrinking cannot both announce the same drop.
   if (wasWarmRepair && !warm.has('repair') && w.player.hp < w.player.maxHp * 0.7)
     w.log(`${c.name || 'it'} is too busy to help you.`)
   if (prev !== 'cover' && c.behaviour === 'cover') w.log(`${c.name || 'it'} moved in front of you.`)

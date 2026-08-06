@@ -71,6 +71,12 @@ export class World {
   abandoned = 0
 
   log(text: string) {
+    // ⚠ Playtest 2026-08-06: the whole log read "it broke off." six times. Behaviour
+    // transitions oscillate (the scorer has jitter, by design), and every entry logged.
+    // A repeated line is worse than no line ... it trains the player to stop reading,
+    // which costs every message that actually matters.
+    const top = this.logs[0]
+    if (top && top.text === text && this.t - top.t < 8) { top.t = this.t; return }
     this.logs.unshift({ text, t: this.t })
     if (this.logs.length > 6) this.logs.pop()
   }
