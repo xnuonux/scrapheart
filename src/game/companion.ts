@@ -53,6 +53,17 @@ export class Companion {
   /** IND-34a: history. did you repair it when it was hurt, or only when convenient. */
   careShown = 0
 
+  /**
+   * IND-34c §what death means. The fragments survive you. The relationship does not,
+   * entirely.
+   *
+   * 1 is a machine that knows you. A companion retrieved by a NEW character starts
+   * low: everything you built into it is intact, and it follows cautiously, because
+   * you are not the same person. ⚠ This is the whole resolution of permadeath plus a
+   * forty-hour companion, and it must never be free and never be total.
+   */
+  bond = 1
+
   // ── derived from fragments, recomputed on install/remove ──
   loyalty = 0; caution = 0; aggression = 0; curiosity = 0
   can = { repair: false, salvage: false, mark: false, interpose: false }
@@ -68,6 +79,14 @@ export class Companion {
       this.curiosity  += effective(f, f.curiosity)
       for (const g of f.grants ?? []) this.can[g] = true
     }
+    // IND-34c: a companion that outlived its person keeps everything it is MADE of and
+    // very little of what it FELT. ⚠ The fragments are untouched ... only the reading
+    // of them is damped, and only loyalty, because loyalty is the part that was about
+    // you specifically. It gets cautious instead, which is what a machine that watched
+    // somebody die should be.
+    this.loyalty *= 0.35 + 0.65 * this.bond
+    this.caution += (1 - this.bond) * 0.40
+
     const clamp01 = (v: number) => Math.max(0, Math.min(1.2, v))
     this.loyalty = clamp01(this.loyalty); this.caution = clamp01(this.caution)
     this.aggression = clamp01(this.aggression); this.curiosity = clamp01(this.curiosity)

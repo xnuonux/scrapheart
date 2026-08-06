@@ -82,6 +82,24 @@ function drawHud() {
     }
     cx.fillStyle = hex(P.compDim, 0.7)
     cx.fillText(`RAM ${c.body.ram}`, 16 + c.installed.length * 12 + 10, 59)
+  } else if (world.waiting) {
+    // IND-34c: it is out there. ⚠ The one thing the player must not have to guess at,
+    // because a companion they forget about is a companion that never survived them.
+    cx.font = '11px ui-monospace, monospace'
+    cx.textAlign = 'left'
+    cx.fillStyle = hex(P.comp, 0.85)
+    cx.fillText(world.waiting.c.name || 'it', 16, 26)
+    cx.fillStyle = hex(P.compDim, 0.9)
+    cx.fillText('waiting where you fell', 16, 42)
+    // a bearing, not a marker. it points, it does not lead.
+    const dx = world.waiting.x - p.x, dy = world.waiting.y - p.y
+    const d = Math.hypot(dx, dy)
+    if (d > 60) {
+      const a = Math.atan2(dy, dx)
+      cx.fillStyle = hex(P.comp, 0.5)
+      cx.fillRect(16 + Math.cos(a) * 10, 56 + Math.sin(a) * 10, 3, 3)
+      cx.fillText(`${Math.round(d)}`, 34, 60)
+    }
   } else {
     cx.font = '11px ui-monospace, monospace'
     cx.fillStyle = hex(P.compDim, 0.8)

@@ -79,6 +79,19 @@ export class World {
     heat: 0, overheated: 0, fireCd: 0,
   }
   companion: Companion | null = null
+  /**
+   * IND-34c: your companion does not die. It is a machine and it was standing next to
+   * you. It watched. It stays where you fell, and it waits.
+   */
+  waiting: { x: number; y: number; c: Companion; since: number } | null = null
+  /** the run counter. permadeath means there is more than one. */
+  run = 1
+  runStarted = 0
+  /** fame, in the ROTMG sense: the only thing a dead character leaves behind. */
+  records: { run: number; seconds: number; kept: number; deepest: number }[] = []
+  deepest = 0
+  deathFlash = 0
+
   /** IND-34k: it is just there, and then it is with you. */
   handler: Handler | null = null
   handlerMet = false
@@ -336,6 +349,78 @@ export class World {
     else this.log(left > 0 ? `you left with nothing. ${left} still out there.` : 'you left.')
   }
 
+  /**
+   * IND-34c §what death means. You die permanently. Character gone, gear gone, fame
+   * recorded, start again.
+   *
+   * 🚨 And your companion does NOT die. It is a machine and it was standing next to
+   * you. It watched. It stays where you fell and it waits, and it is visible in the
+   * world, and going back for it is a real expedition because you are now weak.
+   *
+   * ⚠ Everything you assembled survives. The relationship does not, entirely. That is
+   * the whole resolution of permadeath plus a forty-hour companion, and the teeth stay
+   * in only because the gear and the character really are gone.
+   */
+  die() {
+    const p = this.player
+
+    // fame. the only thing a dead character leaves behind.
+    this.records.unshift({
+      run: this.run,
+      seconds: Math.round(this.t - this.runStarted),
+      kept: this.banked.length,
+      deepest: Math.round(this.deepest),
+    })
+    if (this.records.length > 5) this.records.pop()
+
+    // it stays where you fell. it waits.
+    if (this.companion) {
+      const c = this.companion
+      c.x = p.x; c.y = p.y; c.prevX = c.x; c.prevY = c.y
+      c.behaviour = 'follow'; c.warm.clear(); c.swapCd = 0
+      c.hp = c.maxHp
+      this.waiting = { x: p.x, y: p.y, c, since: this.t }
+      this.companion = null
+    }
+
+    // gear gone. ⚠ BOTH of them. banked is safe from a recall, not from dying, or
+    // there is no permadeath ... only an inconvenient checkpoint.
+    this.pack = []
+    this.banked = []
+
+    // the handler was somebody else's machine and it does not survive you either.
+    this.handler = null
+
+    this.run++
+    this.runStarted = this.t
+    this.deepest = 0
+    p.hp = p.maxHp; p.heat = 0; p.overheated = 0
+    p.x = this.anchor.x; p.y = this.anchor.y; p.prevX = p.x; p.prevY = p.y
+    this.resetSite()
+    this.deathFlash = 1
+    hitstop(320)
+    sfx.destroy()
+
+    this.log('you die here.')
+    if (this.waiting) this.log('it is still standing where you fell.')
+  }
+
+  /**
+   * Going back for it. ⚠ It does not simply resume: the fragments are intact and you
+   * are not the same person. It follows a new character cautiously, and you earn the
+   * rest back.
+   */
+  retrieve() {
+    if (!this.waiting || this.companion) return
+    const c = this.waiting.c
+    c.bond = 0.4
+    c.recompute()
+    this.companion = c
+    this.waiting = null
+    sfx.stand()
+    this.log(`${c.name || 'it'} follows you. not like before.`)
+  }
+
   takeChassis() {
     if (!this.chassis || this.chassis.taken) return
     this.chassis.taken = true
@@ -459,6 +544,7 @@ export function simulate(
   // The recall is instant or it is not a recall.
   if (recalling) w.recall()
   w.recallFlash = Math.max(0, w.recallFlash - dt * 2.2)
+  w.deathFlash = Math.max(0, w.deathFlash - dt * 0.42)   // slow. it should sit on you.
 
   // ── player ──
   p.prevX = p.x; p.prevY = p.y
@@ -570,6 +656,13 @@ export function simulate(
 
   if (w.chassis && !w.chassis.taken && dist(p, w.chassis) < 26) w.takeChassis()
 
+  // IND-34c: going back for it. No prompt, no marker, no objective ... you walk to the
+  // place where you died and it is there.
+  if (w.waiting && dist(p, w.waiting) < 24) w.retrieve()
+
+  // how far east you got this run. the only "score" that is not a number of things.
+  w.deepest = Math.max(w.deepest, p.x)
+
   // ── IND-34k, the beat. Assembled from two permanent rules, introduced once. ──
   //
   // step 1: the handler finds you. after the companion is standing, so the player
@@ -584,25 +677,27 @@ export function simulate(
 
   // ── the companion ──
   if (w.companion) {
-    decide(w.companion, w, dt)
-    act(w.companion, w, dt)
-    if (w.companion.hp <= 0) { w.companion.hp = 1; w.log(`${w.companion.name || 'it'} is badly damaged.`) }
+    const c = w.companion
+    decide(c, w, dt)
+    act(c, w, dt)
+    if (c.hp <= 0) { c.hp = 1; w.log(`${c.name || 'it'} is badly damaged.`) }
+
+    // ⚠ You earn it back, and it is quicker than the first time and it is not free.
+    // Time spent near it, not fleeing, with nothing chasing you. About three minutes
+    // of ordinary company from 0.4 back to whole, which is short enough not to be a
+    // grind and long enough that the loss is a thing you actually live through.
+    if (c.bond < 1) {
+      const calm = c.behaviour !== 'flee' && dist(c, p) < 120
+      if (calm) {
+        const before = c.bond
+        c.bond = Math.min(1, c.bond + dt * 0.0034)
+        if (before < 1 && c.bond >= 1) w.log(`${c.name || 'it'} stays close again.`)
+        c.recompute()
+      }
+    }
   }
 
-  // Death is still a stub (the real one lands with THE FIRST LOSS), but the COST is
-  // real now, because it is what gives the recall its meaning. Carried is lost.
-  // ⚠ Not dropped on the ground to be retrieved ... that is a different game. IND-34
-  // is ROTMG permadeath: what you had is gone.
-  if (p.hp <= 0) {
-    const lost = w.pack.length
-    w.pack = []
-    p.hp = p.maxHp
-    p.x = w.anchor.x; p.y = w.anchor.y; p.prevX = p.x; p.prevY = p.y
-    p.heat = 0; p.overheated = 0
-    w.resetSite()
-    w.recallFlash = 1
-    w.log(lost ? `you would have died here. ${lost} lost.` : 'you would have died here.')
-  }
+  if (p.hp <= 0) w.die()
 }
 
 const FRAG_POOL = ['attend', 'repair', 'salvage', 'ward', 'prudence', 'pursuit', 'inquiry', 'brace', 'selfpres', 'mark']

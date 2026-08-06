@@ -42,6 +42,12 @@ Everything below exists only to make that gate answerable.
       reliability (closest approach 21 / 23 / 21px) after the first version passed once by luck.
 - [x] **The world edge** ... the ground faded instead of being cut. Past `DEEP_X` a hard black
       rectangle sat in frame for the whole back half of the game.
+- [x] **PERMADEATH** (`IND-34c` §what death means) ... you die, character gone, gear gone including
+      everything banked, fame recorded, start again. **And your companion does not die.** It stays
+      where you fell, visible, waiting, every fragment intact. Going back for it is a real
+      expedition because you are now weak, and it does not simply resume: loyalty 0.55 → 0.34,
+      caution 0.15 → 0.39, the name survives, and the rest is earned back over about three minutes
+      of ordinary company. 12/12 measured.
 
 ## found by playtesting, fixed
 
@@ -59,6 +65,26 @@ Everything below exists only to make that gate answerable.
   `hp <= 0`, which is false, so the branch never ran and the probe blamed the game. ⚠ **A failing
   assertion is a claim about the probe as much as about the code.** Read the measurement before
   believing either.
+
+- 🚨 **The deep kills the player on every single automated run, and the first-loss beat pays for
+  it twice.** Four probe versions died there. Die during IND-34k and you lose the dog AND your
+  machine in the same minute ... the heart is on the ground, your companion is standing next to
+  it, and a brand new character has to walk back through the thing that just killed them. ⚠ The
+  design's own risk list says the beat "can read as cruelty and lose the player in hour one." This
+  is the shape that would do it. **Only real playtesting settles whether it is dire or unfair**,
+  and it is the first thing to watch for at the gate.
+
+- **A bot dying proves the bot cannot dodge.** `IND-34c` requires that everything is dodgeable and
+  that you die in three or four hits, so a crude probe standing in a warden's swing is measuring
+  its own driving. ⚠ **Test the CLAIM, not the journey to it**: "a warden one-shots a handler" is
+  now checked by putting a 999hp handler next to a warden and watching it die in one strike (12ms),
+  and the organic path is covered by the surrounding verdicts. Three iterations were spent tuning
+  a bot before I noticed I had written this exact rule into this exact file already.
+
+- **A probe that props up the thing it measures must say so out loud.** Verdict 8 pins the player
+  alive and restores the companion, because it is a claim about the companion's curiosity and not
+  about player survival. That is legitimate and it is also one edit away from a probe that passes
+  by construction, so it is commented at the call site and printed in the output.
 
 - 🚨 **The companion PERCEIVED the world twice, and the copies drifted.** `score()` and `act()`
   each had their own `interesting` / `lootNear` / `near` lookups. I taught the scorer that the
@@ -110,11 +136,7 @@ Everything below exists only to make that gate answerable.
 
 ## next, in order
 
-1. **Death must end something.** Still the stub `you would have died here` ... it costs the carried
-   pack now, but the run does not end. ⚠ The permadeath the entire risk economy is written
-   against does not exist yet, so the recall currently buys you something that was never in
-   danger.
-2. **Interpose** (`IND-34a`) ... capability + disposition + history, and it destroys the fragment
+1. **Interpose** (`IND-34a`) ... capability + disposition + history, and it destroys the fragment
    that let it. The heart grants it and carries the loyalty, so the bookend is half-built already:
    the first socket the player fills holds something that died, and the last one is emptied by
    something saving them. Needs `careShown` wired to repairs.

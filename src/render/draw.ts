@@ -156,6 +156,24 @@ export function render(cx: CanvasRenderingContext2D, w: World, alpha: number, vw
   cx.fillStyle = P.lamp
   for (const b of w.bullets) cx.fillRect(b.x - 1.5, b.y - 1.5, 3, 3)
 
+  // IND-34c: it stays where you fell. It waits. And it is VISIBLE in the world ...
+  // ⚠ if a player cannot see it from a distance, "go back for it" is a treasure hunt
+  // for a thing you did not know you still had.
+  if (w.waiting) {
+    const q = w.waiting
+    const pulse = 0.35 + Math.sin(performance.now() / 1400) * 0.25
+    const g = cx.createRadialGradient(q.x, q.y, 0, q.x, q.y, 86)
+    g.addColorStop(0, hex(P.comp, 0.13 * (1 + pulse))); g.addColorStop(1, hex(P.comp, 0))
+    cx.fillStyle = g; cx.fillRect(q.x - 86, q.y - 86, 172, 172)
+    // dimmer than a live companion, and it does not move at all.
+    cx.fillStyle = hex(P.compDim, 0.95)
+    cx.fillRect(q.x - 5, q.y - 5, 10, 10)
+    cx.fillStyle = hex(P.comp, 0.55)
+    for (let i = 0; i < q.c.liveFragments.length; i++) cx.fillRect(q.x - 5 + i * 4, q.y + 6, 3, 2)
+    cx.fillStyle = hex(P.glow, 0.4 + pulse)     // the light is still on
+    cx.fillRect(q.x - 1, q.y - 2, 2, 2)
+  }
+
   if (w.companion) {
     const c = w.companion
     const px = c.prevX + (c.x - c.prevX) * alpha
@@ -192,6 +210,31 @@ export function render(cx: CanvasRenderingContext2D, w: World, alpha: number, vw
   // IND-34c: the recall. cold, not triumphant. the world goes away for a moment and
   // comes back somewhere quieter. it closes IN rather than flashing out, because
   // leaving is a contraction and the screen should agree with the fiction.
+  // IND-34c: you die here. ⚠ No reward screen, no retry button, no score tally
+  // thrown in your face. The dark comes in slowly and stays a while, and then you are
+  // somewhere else with nothing. Everything the player needs to know is already in
+  // the world: the pack is empty and it is standing out there.
+  if (w.deathFlash > 0) {
+    const f = Math.min(1, w.deathFlash)
+    cx.fillStyle = hex(P.void, f * 0.94)
+    cx.fillRect(0, 0, vw, vh)
+    cx.globalAlpha = Math.min(1, f * 1.6)
+    cx.fillStyle = hex(P.player, 0.55)
+    cx.font = '12px ui-monospace, monospace'
+    cx.textAlign = 'center'
+    // ⚠ Placed above centre: the player sprite is ALWAYS at the middle of the screen,
+    // so centred text lands on top of them.
+    const cy = vh * 0.36
+    cx.fillText(`run ${w.run - 1} ended`, vw / 2, cy)
+    const r = w.records[0]
+    if (r) {
+      cx.fillStyle = hex(P.compDim, 0.75)
+      cx.fillText(r.kept ? `${r.seconds}s, and the ${r.kept} you kept are gone too`
+                         : `${r.seconds}s, and you had nothing to lose`, vw / 2, cy + 20)
+    }
+    cx.globalAlpha = 1
+  }
+
   if (w.recallFlash > 0) {
     const f = w.recallFlash
     cx.fillStyle = hex(P.void, f * 0.85)
