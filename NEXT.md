@@ -54,6 +54,13 @@ Everything below exists only to make that gate answerable.
       RotMG's shape. Casters added: they hold at 300px and fire slow, dodgeable, red-glowing
       shots, so the fight finally has a second verb. Crowd cap cut from a flat 7 to 3-in-the-
       shallows / 6-at-the-edge. 5/5 measured, and every earlier probe re-run green.
+- [x] **INTERPOSE** (`IND-34a` §it saves you) ... capability + disposition + history, no die roll,
+      and it destroys the fragment that let it. 8/8 measured, and the numbers say the design:
+      **B saves you at willingness 1.882; C is the identical machine at 0.983 and lets you take
+      the hit; D at 1.125 is flipped by PRESERVATION alone; D2 at 1.583 saves you again.**
+      Care is now spendable (`hold [E]`) and danger-weighted, measured at 3.5x.
+- [x] **The single damage door.** All three player-damage paths route through `hurtPlayer()`, so
+      the interposition cannot be true on one and silently absent on another.
 
 ## found by playtesting, fixed
 
@@ -71,6 +78,13 @@ Everything below exists only to make that gate answerable.
   `hp <= 0`, which is false, so the branch never ran and the probe blamed the game. ⚠ **A failing
   assertion is a claim about the probe as much as about the code.** Read the measurement before
   believing either.
+
+- 🚨 **I spent four measurement rounds testing a bundle I had not rebuilt.** Changed an interpose
+  threshold from 1.05 to 1.30, wrote the probe, ran it, and watched a willingness of 1.125 sail
+  past a bar of 1.30 five times. ⚠ **Every measurement was correct. They were measurements of old
+  code.** The probes serve `dist/`, so an unbuilt `src` change tests the previous build in total
+  silence. **Fixed structurally**: every probe now refuses to run if `src` is newer than `dist`.
+  A discipline that depends on me remembering is not a discipline.
 
 - 🚨 **The spawn RNG was re-seeded on every single spawn**, so `r() < 0.22 + depth * 0.26` was not
   a probability at all. It built a fresh `seedrandom` from `String(this.t)` per call and read only
@@ -168,15 +182,11 @@ Everything below exists only to make that gate answerable.
 
 ## next, in order
 
-1. **Interpose** (`IND-34a`) ... capability + disposition + history, and it destroys the fragment
-   that let it. The heart grants it and carries the loyalty, so the bookend is half-built already:
-   the first socket the player fills holds something that died, and the last one is emptied by
-   something saving them. Needs `careShown` wired to repairs.
-3. **Heat must be reachable** (see the finding above) or cut the bar.
-4. **Dust weather** (`IND-34i`) ... attacks GPU. Visible from a distance, avoidable, better salvage
+1. **Heat must be reachable** (see the finding above) or cut the bar.
+2. **Dust weather** (`IND-34i`) ... attacks GPU. Visible from a distance, avoidable, better salvage
    inside.
-5. **The stopped ones** (`IND-34l`) ... machines that gave up in place. Still ON. The tell is a light.
-6. **The handler needs its 20-30 minutes.** It currently arrives at t=40s and can die within the
+3. **The stopped ones** (`IND-34l`) ... machines that gave up in place. Still ON. The tell is a light.
+4. **The handler needs its 20-30 minutes.** It currently arrives at t=40s and can die within the
    minute. ⚠ IND-34k is explicit that if it is only there to die, players feel handled. The gap
    is a tuning question that only real playtesting answers.
 7. **Real-device pass** (`game-perf`) ... mid-range Android, 400 entities, thermal test at minute 10.

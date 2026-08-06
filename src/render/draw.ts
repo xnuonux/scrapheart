@@ -189,7 +189,8 @@ export function render(cx: CanvasRenderingContext2D, w: World, alpha: number, vw
     const c = w.companion
     const px = c.prevX + (c.x - c.prevX) * alpha
     const py = c.prevY + (c.y - c.prevY) * alpha
-    drawCompanion(cx, px, py, c.liveFragments.length, c.exposure, 0)
+    drawCompanion(cx, px, py, c.liveFragments.length, c.exposure, 0,
+                  c.emptySockets, w.mending > 0)
   }
 
   const p = w.player

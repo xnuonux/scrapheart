@@ -81,11 +81,17 @@ export function drawMachine(cx: CanvasRenderingContext2D, x: number, y: number, 
 /** the companion. assembled, so its silhouette grows with what is installed. */
 export function drawCompanion(
   cx: CanvasRenderingContext2D, x: number, y: number, parts: number, exposure: number, hurt: number,
+  empty = 0, mending = false,
 ) {
   if (exposure > 0) {
     cx.strokeStyle = hex(P.comp, 0.22 * exposure)
     cx.lineWidth = 1
     cx.beginPath(); cx.arc(x, y, 11 + exposure * 7, 0, Math.PI * 2); cx.stroke()
+  }
+  if (mending) {
+    const b = 0.35 + Math.sin(performance.now() / 180) * 0.25
+    cx.strokeStyle = hex(P.lamp, b); cx.lineWidth = 1
+    cx.beginPath(); cx.arc(x, y, 13, 0, Math.PI * 2); cx.stroke()
   }
   const c = hurt > 0 ? P.playerHi : P.comp
   cx.fillStyle = c
@@ -93,6 +99,10 @@ export function drawCompanion(
   // one small mark per installed fragment. you can read what it is made of.
   cx.fillStyle = hex(P.compDim, 0.9)
   for (let i = 0; i < parts; i++) cx.fillRect(x - 5 + i * 4, y + 6, 3, 2)
+  // ⚠ IND-34a: and one hollow mark per EMPTY socket. The scar is on the body, not in a
+  // menu. An empty socket is never hidden and the game never suggests filling it.
+  cx.strokeStyle = hex(P.compDim, 0.5); cx.lineWidth = 1
+  for (let i = 0; i < empty; i++) cx.strokeRect(x - 4.5 + (parts + i) * 4, y + 6.5, 2, 1)
   // the light it has instead of a face
   cx.fillStyle = hex(P.glow, 0.8)
   cx.fillRect(x - 1, y - 2, 2, 2)

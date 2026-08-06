@@ -122,6 +122,9 @@ export class World {
   records: { run: number; seconds: number; kept: number; deepest: number }[] = []
   deepest = 0
   deathFlash = 0
+  interposes = 0
+  /** how long the player has been holding a repair on the companion */
+  mending = 0
 
   /** IND-34k: it is just there, and then it is with you. */
   handler: Handler | null = null
@@ -350,6 +353,61 @@ export class World {
     }
     this.spawnTimer = 4
     this.bullets = []
+  }
+
+  /**
+   * IND-34a §it saves you. Three things must be true at once, and none of them is a
+   * die roll:
+   *
+   *   1. CAPABILITY  ... a fragment installed that can act in that window
+   *   2. DISPOSITION ... its weights favour you over itself. ⚠ Self-preservation
+   *                      fragments make this LESS likely, and they are otherwise very
+   *                      good fragments.
+   *   3. HISTORY     ... you repaired it when it was damaged, not only when convenient
+   *
+   * 🚨 So a player who used it as a tool will watch it calculate correctly and let them
+   * die, and the game never explains why. A message saying "your companion did not
+   * value you enough" would be unbearable and would also be a lie about how this works.
+   *
+   * Returns true if it took the hit.
+   */
+  tryInterpose(incoming: number): boolean {
+    const c = this.companion, p = this.player
+    if (!c || !c.can.interpose) return false           // 1 · capability
+    if (dist(c, p) > 96) return false                  // it has to be able to reach
+    // only for a hit that actually threatens you. it is not a damage sponge.
+    if (p.hp - incoming > p.maxHp * 0.34) return false
+
+    // 2 · disposition, 3 · history. ⚠ No randomness. The same machine in the same state
+    // makes the same choice, which is the only way a player can ever learn what they
+    // built rather than what they rolled.
+    // ⚠ Tuned so history is EARNED, not tapped. With the heart installed, disposition
+    // alone reaches 0.98 and the bar is 1.30, so roughly three seconds of mending under
+    // fire (or eight of it in safety) is the difference between a machine that reaches
+    // for you and one that does not. A one-second bar would have made condition 3 a
+    // formality wearing the language of a relationship.
+    const history = Math.min(1, c.careShown / 6)
+    const willingness = c.loyalty * 1.0 + history * 0.9 - c.caution * 0.35
+    if (willingness < 1.30) return false
+
+    // and it costs it the piece that let it. ⚠ Not random ... whichever fragment it
+    // used to do it. The thing that made it able to save you is the thing that saving
+    // you consumed.
+    const slot = c.installed.findIndex(f => f?.grants?.includes('interpose'))
+    if (slot < 0) return false
+    const used = c.installed[slot]!
+    c.installed[slot] = null
+    c.recompute()
+
+    c.hp = Math.max(1, c.hp - incoming)
+    p.lastHurt = this.t
+    hitstop(260)
+    sfx.destroy()
+    // ⚠ Plain. No fanfare, no explanation. The empty socket is the sentence.
+    // IND-34a: a scar expressed as a mechanic, with no writing at all.
+    this.log(`${c.name || 'it'} moved into it. ${used.name} is gone.`)
+    this.interposes++
+    return true
   }
 
   /**
@@ -585,9 +643,52 @@ function actHandler(h: Handler, w: World, dt: number) {
   }
 }
 
+/**
+ * IND-34a §3 history: "you have repaired it when it was damaged, rather than only when
+ * it was convenient."
+ *
+ * ⚠ That distinction has to be MEASURED or the third condition of interposition is
+ * decorative. Kneeling next to a hurt machine while nothing is happening is worth very
+ * little. Doing it with something closing on you is worth a great deal, and the system
+ * can tell the difference without ever mentioning it.
+ */
+/**
+ * 🚨 EVERY source of player damage goes through here, so the interposition cannot be
+ * true on one path and silently absent on another.
+ *
+ * ⚠ There are three of them (a runner's strike, a warden's strike, a caster's shot) and
+ * this codebase has already shipped two bugs this session from exactly that shape:
+ * perception written twice, and site-reset written twice. One door.
+ */
+function hurtPlayer(w: World, dmg: number, stop: number) {
+  if (w.tryInterpose(dmg)) return
+  const p = w.player
+  p.hp -= dmg
+  p.lastHurt = w.t
+  sfx.hurt()
+  hitstop(stop)
+}
+
+function mend(w: World, dt: number, holding: boolean) {
+  const c = w.companion, p = w.player
+  if (!c || !holding || dist(c, p) > 42 || c.hp >= c.maxHp) { w.mending = 0; return }
+
+  w.mending += dt
+  c.hp = Math.min(c.maxHp, c.hp + dt * 16)
+
+  const hurt = 1 - c.hp / c.maxHp
+  const danger = w.threats.some(t => t.alive && dist(t, p) < 220) ? 2.6 : 1
+  c.careShown += dt * 0.30 * (0.35 + hurt) * danger
+
+  if (c.hp >= c.maxHp && w.mending > 0.2) {
+    w.log(`${c.name || 'it'} is whole again.`)
+    w.mending = 0
+  }
+}
+
 export function simulate(
   w: World, dt: number, mv: { x: number; y: number }, firing: boolean,
-  aim: { x: number; y: number }, recalling = false,
+  aim: { x: number; y: number }, recalling = false, mending = false,
 ) {
   w.t += dt
   const p = w.player
@@ -628,8 +729,9 @@ export function simulate(
     // so a caster is a threat to dodge rather than a threat to out-position.
     if (b.from === 'threat') {
       if (dist(b, p) < p.r + 5) {
-        p.hp -= casterDamage(depthAt(p.x)); p.lastHurt = w.t
-        w.bullets.splice(i, 1); sfx.hurt(); hitstop(50); continue
+        w.bullets.splice(i, 1)
+        hurtPlayer(w, casterDamage(depthAt(p.x)), 50)
+        continue
       }
       if (w.companion && dist(b, w.companion) < w.companion.r + 5) {
         w.companion.hp -= casterDamage(depthAt(p.x))
@@ -714,7 +816,7 @@ export function simulate(
         // OPENING, not a nerfed exception ... the whole of 34k rests on it being the
         // thing you leave rather than the thing you beat.
         const dmg = warden ? 30 : runnerDamage(depthAt(p.x))
-        if (tgt === p) { p.hp -= dmg; p.lastHurt = w.t; sfx.hurt(); hitstop(warden ? 120 : 70) }
+        if (tgt === p) hurtPlayer(w, dmg, warden ? 120 : 70)
         else if (tgt === w.handler) w.killHandler()
         else if (w.companion) { w.companion.hp -= warden ? 34 : dmg; sfx.hurt() }
       }
@@ -778,6 +880,9 @@ export function simulate(
   // ⚠ the warden is placed, and that is admitted. what must be real is the RULE, and
   // the rule holds for the rest of the game.
   if (!w.wardenSpawned && w.handler?.alive && p.x > DEEP_X) w.spawnWarden()
+
+  // IND-34a §3: the history that interposition reads.
+  mend(w, dt, mending)
 
   // ── the companion ──
   if (w.companion) {

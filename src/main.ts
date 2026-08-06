@@ -38,9 +38,11 @@ startLoop({
     // IND-34c: instant, always available, no cooldown. `pressed` not `down`, so it
     // fires on the edge and cannot be held.
     const recalling = input.pressed('recall')
+    // IND-34a §3: hold [E] next to a damaged companion to repair it. `down`, not
+    // `pressed` ... care is something you spend time on, which is the whole point.
     simulate(world, dt, mv, firing,
              input.hasAim ? input.aim : { x: world.player.x + 1, y: world.player.y },
-             recalling)
+             recalling, input.down('interact'))
     if (recalling) { cam.x = world.player.x; cam.y = world.player.y }
     updateCamera(world, dt)
     if (world.player.hp < lastHp) addTrauma(0.45)
@@ -82,6 +84,20 @@ function drawHud() {
     }
     cx.fillStyle = hex(P.compDim, 0.7)
     cx.fillText(`RAM ${c.body.ram}`, 16 + c.installed.length * 12 + 10, 59)
+
+    // IND-34a: it is hurt and you are near it. ⚠ The prompt appears because the
+    // situation exists, never as a tutorial, and it never says what repairing is FOR.
+    const near = Math.hypot(c.x - p.x, c.y - p.y) < 42
+    if (c.hp < c.maxHp) {
+      cx.fillStyle = hex(P.harm, 0.75)
+      cx.fillRect(16, 66, 40, 3)
+      cx.fillStyle = hex(P.harmDim, 0.6)
+      cx.fillRect(16 + 40 * (c.hp / c.maxHp), 66, 40 * (1 - c.hp / c.maxHp), 3)
+      if (near) {
+        cx.fillStyle = hex(P.lamp, world.mending > 0 ? 0.95 : 0.6)
+        cx.fillText(world.mending > 0 ? 'mending' : 'hold [E]', 62, 70)
+      }
+    }
   } else if (world.waiting) {
     // IND-34c: it is out there. ⚠ The one thing the player must not have to guess at,
     // because a companion they forget about is a companion that never survived them.
