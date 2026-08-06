@@ -102,7 +102,11 @@ export function drawCompanion(
     cx.fillStyle = hex(P.harm, 0.32 * hurt * stutter)
     cx.fillRect(x - 8, y - 8, 16, 16)
   }
-  const c = hurt > 0.6 ? mix(P.comp, P.harmDim, Math.min(0.6, hurt * 0.6)) : P.comp
+  // ⚠ Dim toward the cold structure colour, NOT toward harm. Mixing the companion's
+  // blue into harmDim's dark red produced a PURPLE machine, and there is no purple
+  // anywhere in this palette. It should read as its light going out, which is what is
+  // actually happening, and the red halo above already carries the harm.
+  const c = hurt > 0.6 ? mix(P.comp, P.structure, Math.min(0.7, hurt * 0.7)) : P.comp
   cx.fillStyle = c
   cx.fillRect(x - 5, y - 5, 10, 10)
   // one small mark per installed fragment. you can read what it is made of.
