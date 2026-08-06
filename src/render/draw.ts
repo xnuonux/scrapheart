@@ -8,6 +8,31 @@ import { W as WORLD_W, H as WORLD_H } from '../game/world'
 
 export const cam = { x: 0, y: 0, shake: 0 }
 
+/**
+ * game-perf: the dust body, rasterised once and reused.
+ *
+ * ⚠ Keyed on radius and capped, because a cache with an unbounded key set is a memory
+ * leak wearing an optimisation's clothes. The weather radius is 300-490, so quantising
+ * to 32px gives at most a handful of entries for the life of the process.
+ */
+const dustCache = new Map<number, HTMLCanvasElement>()
+function dustSprite(radius: number): HTMLCanvasElement {
+  const key = Math.max(64, Math.round(radius / 32) * 32)
+  const hit = dustCache.get(key)
+  if (hit) return hit
+  const c = document.createElement('canvas')
+  c.width = c.height = key * 2
+  const g2 = c.getContext('2d')!
+  const g = g2.createRadialGradient(key, key, key * 0.18, key, key, key)
+  g.addColorStop(0, hex(P.dust, 0.50))
+  g.addColorStop(0.55, hex(P.dust, 0.30))
+  g.addColorStop(1, hex(P.dust, 0))
+  g2.fillStyle = g
+  g2.fillRect(0, 0, key * 2, key * 2)
+  dustCache.set(key, c)
+  return c
+}
+
 /** trauma-based shake, squared and decaying. never additive. game-vfx. */
 export function addTrauma(a: number) { cam.shake = Math.min(1, cam.shake + a) }
 
@@ -208,22 +233,24 @@ export function render(cx: CanvasRenderingContext2D, w: World, alpha: number, vw
   // kills you but greed.
   if (w.weather) {
     const x = w.weather, s = x.strength
-    const g = cx.createRadialGradient(x.x, x.y, x.r * 0.18, x.x, x.y, x.r)
-    g.addColorStop(0, hex(P.dust, 0.50 * s))
-    g.addColorStop(0.55, hex(P.dust, 0.30 * s))
-    g.addColorStop(1, hex(P.dust, 0))
-    cx.fillStyle = g
-    cx.fillRect(x.x - x.r, x.y - x.r, x.r * 2, x.r * 2)
-    // a few drifting bands so it reads as moving air rather than a painted circle
+    // ⚠ ONE cached sprite, blitted. This built six radial gradients EVERY FRAME and
+    // measured 55-57fps against a flat 60 everywhere else, on a desktop, for a game
+    // whose target is a mid-range Android. Gradients are the most expensive call in
+    // canvas 2D and rebuilding an identical one 360 times a second is pure waste.
+    const body = dustSprite(Math.round(x.r))
+    cx.globalAlpha = s
+    cx.drawImage(body, x.x - x.r, x.y - x.r, x.r * 2, x.r * 2)
+    // a few drifting bands so it reads as moving air rather than a painted circle.
+    // same sprite, different sizes and offsets ... no new gradients.
     for (let i = 0; i < 5; i++) {
       const ph = w.t * (0.25 + i * 0.05) + i * 1.7
       const bx = x.x + Math.cos(ph) * x.r * 0.5
       const by = x.y + Math.sin(ph * 0.7) * x.r * 0.34
       const br = x.r * (0.30 + (i % 3) * 0.09)
-      const bg = cx.createRadialGradient(bx, by, 0, bx, by, br)
-      bg.addColorStop(0, hex(P.dust, 0.16 * s)); bg.addColorStop(1, hex(P.dust, 0))
-      cx.fillStyle = bg; cx.fillRect(bx - br, by - br, br * 2, br * 2)
+      cx.globalAlpha = s * 0.34
+      cx.drawImage(body, bx - br, by - br, br * 2, br * 2)
     }
+    cx.globalAlpha = 1
   }
 
   // ⚠ The world stops at W and H, and past DEEP_X the player is always near the east

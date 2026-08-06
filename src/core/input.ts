@@ -64,7 +64,14 @@ export function bindInput(canvas: HTMLCanvasElement, toWorld: (sx: number, sy: n
   const FLOAT_STICK_ID = { id: -1 }
 
   canvas.addEventListener('pointerdown', e => {
-    canvas.setPointerCapture(e.pointerId)
+    // 🚨 setPointerCapture THROWS if the pointer is already gone ("No active pointer
+    // with the given id"), and it was the first line of this handler, so the throw took
+    // the fire, the aim and the stick with it. A dropped input is invisible: the player
+    // taps and nothing happens and there is nothing in the log.
+    //
+    // ⚠ Capture is an optimisation (it keeps drags alive outside the canvas). Input is
+    // not. Never let the optimisation be able to cancel the thing it is optimising.
+    try { canvas.setPointerCapture(e.pointerId) } catch { /* capture is a nicety */ }
     if (e.pointerType === 'touch') {
       input.scheme = 'touch'
       // floating stick on the left half, fire/aim on the right.

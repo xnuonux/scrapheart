@@ -82,6 +82,18 @@ Everything below exists only to make that gate answerable.
       the rule stays absolute: a warden **that can act** still one-shots a handler. 7/7, and the
       pair is proven both ways ... an intact warden kills a 999hp handler in **one strike, 9ms**,
       and the broken one cannot kill it in **four seconds with the handler sitting in its lap**.
+- [x] **PERF + THE FIRST REAL TOUCH PASS.** Dust now blits one cached sprite instead of building
+      six radial gradients every frame: desktop back to a flat **60fps in dust** (was 55-57).
+      Emulated Pixel 5 at 2.75x DPR with **4x CPU throttling**, in the worst case the game has
+      (deep + dust + full crowd + casters): **26-32fps against `core/loop`'s deliberate 30fps
+      touch cap**, worst frame 82ms, no spikes over 100ms.
+- [x] 🚨 **A REAL INPUT BUG, found by finally exercising touch.** `canvas.setPointerCapture()` is
+      the FIRST line of the `pointerdown` handler and it **throws** when the pointer id is already
+      gone. The throw took fire, aim and the stick with it, and a dropped input is invisible ...
+      the player taps, nothing happens, nothing logs. ⚠ **Capture is an optimisation; input is
+      not. Never let the optimisation be able to cancel the thing it optimises.** Now wrapped.
+      Verified after: stick moves 188px, releases to 0px drift, firing raises heat to 0.82, and
+      `pointercancel` leaves nothing stuck on.
 - [x] **The single damage door.** All three player-damage paths route through `hurtPlayer()`, so
       the interposition cannot be true on one and silently absent on another.
 
@@ -224,12 +236,10 @@ approaching it.
 1. **The handler needs its 20-30 minutes.** It arrives at t=40s and can die inside the minute.
    ⚠ `IND-34k` is explicit that if it is only there to die, players feel handled. **A number I
    pick here is a guess wearing a decimal point** ... it wants a human watching a human.
-2. **Real-device pass** (`game-perf`) ... mid-range Android, 400 entities, thermal test at minute
-   10. Headless chromium says 60fps and headless chromium has never been hot in someone's hand.
-   ⚠ **Dust already costs measurable frames on a desktop** (55-57fps against a flat 60 everywhere
-   else). It draws six radial gradients per frame and gradients are the most expensive thing in
-   the canvas 2D API. **First thing to profile on a phone**, and the fix is a cached offscreen
-   dust sprite blitted at varying alpha rather than rebuilt every frame.
+2. **Real-device pass** (`game-perf`) ... an emulated Pixel 5 under 4x CPU throttle now holds
+   26-32fps against the intended 30 cap, with touch verified end to end. ⚠ **What emulation
+   cannot tell you is thermal**: whether minute 10 in someone's hand is still 30fps, and whether
+   the phone gets hot enough that they put it down. **That needs a real device and ten minutes.**
 3. **THE GATE.** Ten people, one hour, watched. **Seven name the companion unprompted and react
    when it is badly hurt.** ⚠ If it fails, stop the project.
 
