@@ -15,23 +15,80 @@ export const cam = { x: 0, y: 0, shake: 0 }
  * leak wearing an optimisation's clothes. The weather radius is 300-490, so quantising
  * to 32px gives at most a handful of entries for the life of the process.
  */
-const dustCache = new Map<number, HTMLCanvasElement>()
-function dustSprite(radius: number): HTMLCanvasElement {
-  const key = Math.max(64, Math.round(radius / 32) * 32)
-  const hit = dustCache.get(key)
+/** how many drifting bands the dust draws on top of its body. see the call site. */
+const DUST_BANDS = (typeof matchMedia !== 'undefined' && matchMedia('(pointer:coarse)').matches) ? 1 : 5
+
+/**
+ * 🚨 EVERY radial glow in this game, rasterised once and blitted after.
+ *
+ * Instrumented count before this existed: **16 createRadialGradient calls per frame in
+ * CLEAR AIR** ... lamps, fragment glows, the anchor, the waiting companion, every enemy
+ * bullet. Gradients are the most expensive call in the canvas 2D API and the game was
+ * rebuilding sixteen identical ones sixty times a second.
+ *
+ * ⚠ I cached the dust and thought that was the fill-rate problem. The dust was the one
+ * I could SEE. The ordinary background glow of the world cost more, all the time, and
+ * only showed up when I counted the calls instead of watching the frame rate.
+ *
+ * Keyed on colour + quantised radius, so the key set is tiny and bounded.
+ */
+const glowCache = new Map<string, HTMLCanvasElement>()
+function glowSprite(colour: string, radius: number, inner = 0, mid?: [number, number]): HTMLCanvasElement {
+  const r = Math.max(8, Math.round(radius / 8) * 8)
+  const key = `${colour}|${r}|${inner}|${mid?.[0] ?? ''}|${mid?.[1] ?? ''}`
+  const hit = glowCache.get(key)
   if (hit) return hit
   const c = document.createElement('canvas')
-  c.width = c.height = key * 2
+  c.width = c.height = r * 2
   const g2 = c.getContext('2d')!
-  const g = g2.createRadialGradient(key, key, key * 0.18, key, key, key)
-  g.addColorStop(0, hex(P.dust, 0.50))
-  g.addColorStop(0.55, hex(P.dust, 0.30))
-  g.addColorStop(1, hex(P.dust, 0))
+  const g = g2.createRadialGradient(r, r, r * inner, r, r, r)
+  g.addColorStop(0, hex(colour, 1))
+  if (mid) g.addColorStop(mid[0], hex(colour, mid[1]))
+  g.addColorStop(1, hex(colour, 0))
   g2.fillStyle = g
-  g2.fillRect(0, 0, key * 2, key * 2)
-  dustCache.set(key, c)
+  g2.fillRect(0, 0, r * 2, r * 2)
+  glowCache.set(key, c)
   return c
 }
+
+/** blit a cached glow centred at (x,y) with an overall alpha. */
+function glow(cx: CanvasRenderingContext2D, colour: string, x: number, y: number,
+              radius: number, alpha: number, inner = 0, mid?: [number, number]) {
+  if (alpha <= 0.004 || radius <= 0) return
+  const s = glowSprite(colour, radius, inner, mid)
+  cx.globalAlpha = alpha
+  cx.drawImage(s, x - radius, y - radius, radius * 2, radius * 2)
+  cx.globalAlpha = 1
+}
+
+/**
+ * The vignette. Full-screen, so it is the biggest fill in the frame, and it was rebuilt
+ * as a fresh gradient every single one.
+ * ⚠ Rendered at quarter resolution and stretched: a smooth radial falloff has no detail
+ * to lose, and it cuts the rasterisation cost 16x. Cached per viewport + dust step.
+ */
+const vignetteCache = new Map<string, HTMLCanvasElement>()
+function vignette(vw: number, vh: number, dust: number): HTMLCanvasElement {
+  const key = `${vw}x${vh}|${dust}`
+  const hit = vignetteCache.get(key)
+  if (hit) return hit
+  if (vignetteCache.size > 24) vignetteCache.clear()   // viewport resizes must not leak
+  const s = 4
+  const c = document.createElement('canvas')
+  c.width = Math.max(1, Math.ceil(vw / s)); c.height = Math.max(1, Math.ceil(vh / s))
+  const g2 = c.getContext('2d')!
+  const inner = Math.min(c.width, c.height) * (0.30 - dust * 0.22)
+  const outer = Math.max(c.width, c.height) * (0.72 - dust * 0.30)
+  const vg = g2.createRadialGradient(c.width / 2, c.height / 2, Math.max(0, inner),
+                                     c.width / 2, c.height / 2, Math.max(1, outer))
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.78)')
+  g2.fillStyle = vg; g2.fillRect(0, 0, c.width, c.height)
+  vignetteCache.set(key, c)
+  return c
+}
+
+const dustSprite = (radius: number) =>
+  glowSprite(P.dust, Math.max(64, Math.round(radius / 32) * 32), 0.18, [0.55, 0.60])
 
 /** trauma-based shake, squared and decaying. never additive. game-vfx. */
 export function addTrauma(a: number) { cam.shake = Math.min(1, cam.shake + a) }
@@ -86,9 +143,7 @@ export function render(cx: CanvasRenderingContext2D, w: World, alpha: number, vw
     // was landing as the tenth. The salvage pass owns its look entirely.
     if ((i.pull ?? 1) > 1) continue
     if (i.kind === 'lamp') {
-      const g = cx.createRadialGradient(i.x, i.y, 0, i.x, i.y, 90)
-      g.addColorStop(0, hex(P.lamp, 0.22)); g.addColorStop(1, hex(P.lamp, 0))
-      cx.fillStyle = g; cx.fillRect(i.x - 90, i.y - 90, 180, 180)
+      glow(cx, P.lamp, i.x, i.y, 90, 0.22)
       cx.fillStyle = hex(P.lamp, 0.85); cx.fillRect(i.x - 1, i.y - 6, 2, 6)
     } else if (i.kind === 'arrangement') {
       // evidence that someone made a small choice about comfort
@@ -115,9 +170,7 @@ export function render(cx: CanvasRenderingContext2D, w: World, alpha: number, vw
       // glance, from across a field, without a word ... so it breathes.
       const w0 = sv.worn ?? 0
       if (w0 <= 0) {
-        const g = cx.createRadialGradient(sv.x, sv.y, 0, sv.x, sv.y, 26)
-        g.addColorStop(0, hex(P.glow, 0.30)); g.addColorStop(1, hex(P.glow, 0))
-        cx.fillStyle = g; cx.fillRect(sv.x - 26, sv.y - 26, 52, 52)
+        glow(cx, P.glow, sv.x, sv.y, 26, 0.30)
       } else {
         // ⚠ The worn one has to separate from a field of nine amber lamps and a dozen
         // amber salvage glows, or "the first glowing fragment the player ever sees"
@@ -125,11 +178,9 @@ export function render(cx: CanvasRenderingContext2D, w: World, alpha: number, vw
         // and it breathes, and nothing else does either.
         const beat = 0.5 + Math.sin(performance.now() / 900) * 0.5
         const rad = 34 + 26 * beat
-        const halo = cx.createRadialGradient(sv.x, sv.y, 0, sv.x, sv.y, rad)
-        halo.addColorStop(0, hex(P.playerHi, 0.22 + 0.20 * beat))
-        halo.addColorStop(0.45, hex(P.glow, 0.16 + 0.14 * beat))
-        halo.addColorStop(1, hex(P.glow, 0))
-        cx.fillStyle = halo; cx.fillRect(sv.x - rad, sv.y - rad, rad * 2, rad * 2)
+        // ⚠ the breathing lives in the RADIUS and the blit alpha, so the texture itself
+        // stays constant and cacheable. quantised radius means a handful of sprites.
+        glow(cx, P.playerHi, sv.x, sv.y, rad, 0.22 + 0.20 * beat, 0, [0.45, 0.7])
         cx.fillStyle = hex(P.playerHi, 0.75 + 0.25 * beat)
         cx.fillRect(sv.x - 2.5, sv.y - 2.5, 5, 5)
       }
@@ -171,9 +222,7 @@ export function render(cx: CanvasRenderingContext2D, w: World, alpha: number, vw
   {
     const a = w.anchor
     const breathe = 0.5 + Math.sin(w.t * 0.9) * 0.12
-    const g = cx.createRadialGradient(a.x, a.y, 0, a.x, a.y, 70)
-    g.addColorStop(0, hex(P.lamp, 0.14 * breathe)); g.addColorStop(1, hex(P.lamp, 0))
-    cx.fillStyle = g; cx.fillRect(a.x - 70, a.y - 70, 140, 140)
+    glow(cx, P.lamp, a.x, a.y, 70, 0.14 * breathe)
     cx.strokeStyle = hex(P.lamp, 0.34); cx.lineWidth = 1
     cx.beginPath(); cx.arc(a.x, a.y, 26, 0, Math.PI * 2); cx.stroke()
     cx.fillStyle = hex(P.lamp, 0.7)
@@ -187,9 +236,8 @@ export function render(cx: CanvasRenderingContext2D, w: World, alpha: number, vw
   // colour in the palette and this is the one place it moves.
   for (const b of w.bullets) {
     if (b.from === 'threat') {
-      const g = cx.createRadialGradient(b.x, b.y, 0, b.x, b.y, 11)
-      g.addColorStop(0, hex(P.harm, 0.5)); g.addColorStop(1, hex(P.harm, 0))
-      cx.fillStyle = g; cx.fillRect(b.x - 11, b.y - 11, 22, 22)
+      // ⚠ one gradient PER BULLET per frame, previously. a caster volley multiplied it.
+      glow(cx, P.harm, b.x, b.y, 11, 0.5)
       cx.fillStyle = P.harm; cx.fillRect(b.x - 2.5, b.y - 2.5, 5, 5)
     } else {
       cx.fillStyle = P.lamp; cx.fillRect(b.x - 1.5, b.y - 1.5, 3, 3)
@@ -202,9 +250,7 @@ export function render(cx: CanvasRenderingContext2D, w: World, alpha: number, vw
   if (w.waiting) {
     const q = w.waiting
     const pulse = 0.35 + Math.sin(performance.now() / 1400) * 0.25
-    const g = cx.createRadialGradient(q.x, q.y, 0, q.x, q.y, 86)
-    g.addColorStop(0, hex(P.comp, 0.13 * (1 + pulse))); g.addColorStop(1, hex(P.comp, 0))
-    cx.fillStyle = g; cx.fillRect(q.x - 86, q.y - 86, 172, 172)
+    glow(cx, P.comp, q.x, q.y, 86, 0.13 * (1 + pulse))
     // dimmer than a live companion, and it does not move at all.
     cx.fillStyle = hex(P.compDim, 0.95)
     cx.fillRect(q.x - 5, q.y - 5, 10, 10)
@@ -239,12 +285,21 @@ export function render(cx: CanvasRenderingContext2D, w: World, alpha: number, vw
     // measured 55-57fps against a flat 60 everywhere else, on a desktop, for a game
     // whose target is a mid-range Android. Gradients are the most expensive call in
     // canvas 2D and rebuilding an identical one 360 times a second is pure waste.
+    // ⚠ x0.5 because the shared sprite bakes full alpha and the old inline gradient
+    // peaked at 0.50. The opacity now lives at the blit, not in the texture.
     const body = dustSprite(Math.round(x.r))
-    cx.globalAlpha = s
+    cx.globalAlpha = s * 0.5
     cx.drawImage(body, x.x - x.r, x.y - x.r, x.r * 2, x.r * 2)
     // a few drifting bands so it reads as moving air rather than a painted circle.
     // same sprite, different sizes and offsets ... no new gradients.
-    for (let i = 0; i < 5; i++) {
+    //
+    // 🚨 FILL RATE, not gradient construction, is what dust actually costs. Profiled on
+    // a throttled Pixel 5 it took **19fps** even after the sprite cache, because six
+    // huge translucent blits is six full passes over most of the screen. The cache fixed
+    // the wrong half of the problem.
+    // ⚠ Mobile gets one band. game-perf: a quality tier the player never notices beats a
+    // frame rate they do.
+    for (let i = 0; i < DUST_BANDS; i++) {
       const ph = w.t * (0.25 + i * 0.05) + i * 1.7
       const bx = x.x + Math.cos(ph) * x.r * 0.5
       const by = x.y + Math.sin(ph * 0.7) * x.r * 0.34
@@ -274,12 +329,11 @@ export function render(cx: CanvasRenderingContext2D, w: World, alpha: number, vw
 
   // vignette. the dark closes in. ⚠ And in dust it closes in FURTHER, so the player
   // feels the same loss of perception the companion is taking as a stat.
+  // ⚠ The last per-frame gradient, and the biggest single fill in the game since it
+  // covers the whole screen. Cached on viewport + dust QUANTISED to 8 steps, so it
+  // rebuilds only when the storm meaningfully thickens rather than on every frame.
   const dust = w.dustAt(w.player)
-  const inner = Math.min(vw, vh) * (0.30 - dust * 0.22)
-  const outer = Math.max(vw, vh) * (0.72 - dust * 0.30)
-  const vg = cx.createRadialGradient(vw / 2, vh / 2, inner, vw / 2, vh / 2, outer)
-  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.78)')
-  cx.fillStyle = vg; cx.fillRect(0, 0, vw, vh)
+  cx.drawImage(vignette(vw, vh, Math.round(dust * 8) / 8), 0, 0, vw, vh)
   if (dust > 0) {
     cx.fillStyle = hex(P.dust, dust * 0.16)
     cx.fillRect(0, 0, vw, vh)

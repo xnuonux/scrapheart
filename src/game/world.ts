@@ -861,13 +861,20 @@ export function simulate(
   // something close enough to matter. The scorer already sees your movement, exactly as
   // 34c says it should, and no special case is needed anywhere else.
   {
-    const nearT = w.threats.filter(isHostile)
-                           .sort((a, b) => dist(p, a) - dist(p, b))[0]
+    // ⚠ single pass, no allocation. This ran filter().sort() on every one of 60 frames
+    // a second to find ONE minimum, which is a new array and an O(n log n) for a value
+    // that O(n) and no garbage produces.
+    let nearT: Threat | undefined, nearD = Infinity
+    for (const t of w.threats) {
+      if (!isHostile(t)) continue
+      const d = dist(p, t)
+      if (d < nearD) { nearD = d; nearT = t }
+    }
     const moving = mv.x !== 0 || mv.y !== 0
-    if (nearT && moving && dist(p, nearT) < 330) {
+    if (nearT && moving && nearD < 330) {
       // dot product of movement against the direction away from the threat
       const ax = p.x - nearT.x, ay = p.y - nearT.y
-      const m = Math.hypot(ax, ay) || 1
+      const m = nearD || 1
       p.retreating = (mv.x * ax + mv.y * ay) / m > 0.35
     } else p.retreating = false
   }
