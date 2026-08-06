@@ -195,8 +195,17 @@ export function score(c: Companion, w: World): Record<Behaviour, number> {
   // Wider radius, stronger pull, lighter caution penalty. At loyalty 0.7 it now beats
   // follow decisively; at the starter's 0.15 it does not come close ... which is the
   // whole point. **You did not order it to cover you. You built something that would.**
-  s.cover = c.loyalty * 2.20 * (p.retreating ? 1 : 0) * (nearest ? clamp(1 - dT / 400, 0, 1) : 0)
-          - c.caution * 0.50
+  // 🚨 Loyalty must OUTWEIGH caution, not merely exist. Subtracting caution at the end
+  // let a timid machine cover anyway whenever it happened to be standing next to you,
+  // because `follow` bottoms out at 0.10 and even a tiny positive beats that. Measured:
+  // a starter companion advanced into a runner 8 times in one run.
+  //
+  // ⚠ Inside the bracket the term goes NEGATIVE for a cautious machine and the scorer's
+  // max(0, …) kills it outright. That is `IND-34c` stated as arithmetic: *a companion
+  // with self-preservation weights retreats with you; a companion with loyalty weights
+  // advances while you fall back.* Bravery is a threshold, not a gradient.
+  s.cover = (c.loyalty - c.caution * 1.6) * 2.40
+          * (p.retreating ? 1 : 0) * (nearest ? clamp(1 - dT / 400, 0, 1) : 0)
           - low * 0.5
 
   s.repair = c.can.repair
