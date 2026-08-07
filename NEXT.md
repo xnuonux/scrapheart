@@ -142,6 +142,15 @@ Everything below exists only to make that gate answerable.
       **loyalty 0.7 covers 15/30 samples and advances 47px toward the threat while you fall back;
       loyalty 0.15 never covers at all.** *You did not order it to cover you. You built something
       that would.*
+- [x] 🚨 **THE SOCKET ECONOMY EXISTED ONLY ON PAPER.** `install` filled empty slots and **nothing
+      anywhere removed a fragment**, so a companion with three full sockets was frozen for the
+      rest of the run ... a player who installed three poor fragments early had no way back, which
+      is not a difficulty curve but a dead end they cannot see coming. And `degradeOnRemoval` was
+      written, correct, and **never once called**, taking IND-34a's whole "cycled three or four
+      times and it is worn to nothing" economy with it. 5/5 measured, and the numbers land on the
+      doc: pulling costs **28%**, cycling runs **0.28 → 0.56 → 0.84 → destroyed**, a lived-in
+      fragment survives **12 cycles against a wild one's 4**, and pulling the loyal piece drops
+      loyalty **0.70 → 0.15**.
 - [x] **The single damage door.** All three player-damage paths route through `hurtPlayer()`, so
       the interposition cannot be true on one and silently absent on another.
 
@@ -298,7 +307,13 @@ phone, or ten strangers, and none of them can be closed by writing more code.** 
 honest state, and continuing to add systems now would be avoiding the gate rather than
 approaching it.
 
-1. **`HANDLER_GRACE` is a guess and it is the only one left.** Set to 8 minutes, because
+1. **`can.mark` is granted and read by nothing.** SURVEY OPTIC hands out a capability that does
+   not exist. `IND-34c` describes MARKING as "it flags what it perceives before you do ... a high
+   perception companion is an early warning system, and a low one is a liability you love", while
+   also forbidding a UI marker or a line of dialogue. ⚠ **That leaves position and posture as the
+   only channel**, which is close enough to `investigate` that it needs a design call, not an
+   implementation. Until then SURVEY OPTIC is selling something it does not deliver.
+2. **`HANDLER_GRACE` is a guess and it is the only one left.** Set to 8 minutes, because
    `IND-34k` asks for 20-30 but the gate is a one-hour session and the beat has to land inside
    it. ⚠ **Watch a real person: if the dog still feels like a device rather than a companion when
    the warden arrives, this number is too small**, and it is the only thing that needs changing.

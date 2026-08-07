@@ -171,8 +171,12 @@ export function refreshPack() {
         <span class="dim">${f.provenance}</span>
         <span class="kinds">${f.kinds.join(' · ')}</span>
       </div>`).join('')}
-    ${c ? `<h2>SOCKETS</h2>${c.installed.map((f, i) =>
-      `<div class="slot ${f ? 'full' : 'empty'}" data-s="${i}">${f ? f.name : 'empty'}</div>`).join('')}` : ''}
+    ${c ? `<h2>SOCKETS</h2>${c.installed.map((f, i) => {
+      // ⚠ wear is shown on the socket, because pulling a piece out costs something and
+      // the player has to be able to see what a fragment has already been through.
+      const wear = f && f.degradation > 0 ? ` <span class="dim">${Math.round(f.degradation * 100)}% worn</span>` : '';
+      return `<div class="slot ${f ? 'full' : 'empty'}" data-s="${i}">${f ? f.name + wear : 'empty'}</div>`;
+    }).join('')}` : ''}
     ${world.banked.length ? `<h2>KEPT <span class="dim">safe</span></h2>${world.banked.map((f, i) =>
       `<div class="frag kept" data-k="${i}"><b>${f.name}</b><span class="dim">${f.provenance}</span>
        <span class="kinds">${f.kinds.join(' · ')}</span></div>`).join('')}` : ''}
@@ -192,8 +196,24 @@ ui.addEventListener('click', e => {
     selected = k !== undefined ? { from: 'banked', i: +k } : { from: 'pack', i: +fragEl.dataset.i! }
     ui.querySelectorAll('.frag').forEach(el => el.classList.remove('sel'))
     fragEl.classList.add('sel')
-  } else if (slotEl && selected && world.companion) {
+  } else if (slotEl && world.companion) {
     const s = +slotEl.dataset.s!
+    // ⚠ a FILLED socket clicked with nothing selected means "take it out". this was the
+    // missing half of the socket economy: install existed, remove did not, so a full
+    // companion could never change again for the rest of the run.
+    if (world.companion.installed[s] && !selected) {
+      const name = world.companion.installed[s]!.name
+      const out = world.companion.remove(s)
+      if (out.destroyed) world.log(`${name} came apart in your hands.`)
+      else if (out.fragment) {
+        world.pack.push(out.fragment)
+        const pct = Math.round(out.fragment.degradation * 100)
+        world.log(`pulled: ${name}${pct ? ` (${pct}% worn)` : ''}`)
+      }
+      refreshPack()
+      return
+    }
+    if (!selected) return
     const list = selected.from === 'pack' ? world.pack : world.banked
     const f = list[selected.i]
     if (f && world.companion.install(f, s)) {

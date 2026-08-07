@@ -7,7 +7,7 @@
 // produces task division and that RAM visibly drops behaviours under load. Both are
 // carried forward here.
 
-import { Fragment, effective } from './fragments'
+import { Fragment, effective, degradeOnRemoval } from './fragments'
 import { isHostile, type World } from './world'
 
 export type Behaviour = 'engage' | 'cover' | 'repair' | 'salvage' | 'follow' | 'investigate' | 'flee'
@@ -111,6 +111,36 @@ export class Companion {
 
   get liveFragments() { return this.installed.filter(Boolean) as Fragment[] }
   get emptySockets() { return this.installed.filter(f => f === null).length }
+
+  /**
+   * 🚨 TAKING A PIECE BACK OUT. Missing entirely until 2026-08-06.
+   *
+   * `install` only ever filled EMPTY slots and nothing anywhere removed a fragment, so
+   * once three sockets were full the companion was frozen for the rest of the run. In a
+   * game about assembling a mind over forty hours, a player who put three poor
+   * fragments in early had no way back. That is not a difficulty curve, it is a dead
+   * end you cannot see coming.
+   *
+   * ⚠ It also meant `degradeOnRemoval` ... the whole "cycled three or four times and it
+   * is worn to nothing" economy from IND-34a, and the `worn` resistance that makes a
+   * lived-in fragment the one you can afford to experiment with ... was written, tested
+   * in isolation, and **never once called**.
+   *
+   * Returns the fragment (degraded), or null. A fragment worn past 1 is GONE: pulling a
+   * piece out costs something, which is the entire point of the socket economy.
+   */
+  remove(slot: number): { fragment: Fragment | null; destroyed: boolean } {
+    if (slot < 0 || slot >= this.installed.length) return { fragment: null, destroyed: false }
+    const f = this.installed[slot]
+    if (!f) return { fragment: null, destroyed: false }
+    this.installed[slot] = null
+    const worn = degradeOnRemoval(f)
+    this.recompute()
+    // ⚠ >= 1 means worn to nothing. it does not go back in the pack, because a pack full
+    // of dead fragments is a spreadsheet.
+    if (worn.degradation >= 1) return { fragment: null, destroyed: true }
+    return { fragment: worn, destroyed: false }
+  }
 
   install(f: Fragment, slot: number) {
     if (slot < 0 || slot >= this.installed.length) return false
