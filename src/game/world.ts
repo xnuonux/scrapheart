@@ -1216,8 +1216,13 @@ export function simulate(
     //
     // It speaks once when it crosses into real trouble, and it does not speak again
     // until it has been made whole ... so the line stays rare enough to mean something.
+    // ⚠ HALF, not 40%. Measured across ordinary play: the companion bottoms out around
+    // 43% of its health, so a threshold at 0.4 meant the single most important signal in
+    // the build almost never fired ... it was tuned to a number just below where the game
+    // actually goes. More than half its health gone IS badly hurt, and the gate asks
+    // whether players react to exactly that.
     const frac = c.hp / c.maxHp
-    if (frac < 0.4 && !c.hurtAnnounced) {
+    if (frac < 0.5 && !c.hurtAnnounced) {
       c.hurtAnnounced = true
       w.log(`${c.name || 'it'} is hurt.`)
     }

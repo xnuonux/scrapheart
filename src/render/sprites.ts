@@ -97,7 +97,7 @@ export function drawCompanion(
   // be visible on the thing itself and not only in a log line they may not be reading.
   // ⚠ It falters rather than flashing: the light stutters and the body dims, which
   // reads as a machine in trouble instead of a health bar in disguise.
-  if (hurt > 0.6) {
+  if (hurt > 0.5) {
     const stutter = Math.sin(performance.now() / 90) > 0.2 ? 1 : 0.45
     cx.fillStyle = hex(P.harm, 0.32 * hurt * stutter)
     cx.fillRect(x - 8, y - 8, 16, 16)
@@ -106,7 +106,9 @@ export function drawCompanion(
   // blue into harmDim's dark red produced a PURPLE machine, and there is no purple
   // anywhere in this palette. It should read as its light going out, which is what is
   // actually happening, and the red halo above already carries the harm.
-  const c = hurt > 0.6 ? mix(P.comp, P.structure, Math.min(0.7, hurt * 0.7)) : P.comp
+  // ⚠ the SAME 0.5 as the log line and the halo above. three thresholds for one idea is
+  // how a game ends up saying "it is hurt" about a machine that still looks fine.
+  const c = hurt > 0.5 ? mix(P.comp, P.structure, Math.min(0.7, hurt * 0.7)) : P.comp
   cx.fillStyle = c
   cx.fillRect(x - 5, y - 5, 10, 10)
   // one small mark per installed fragment. you can read what it is made of.

@@ -257,7 +257,23 @@ export function score(c: Companion, w: World): Record<Behaviour, number> {
   // max(0, …) kills it outright. That is `IND-34c` stated as arithmetic: *a companion
   // with self-preservation weights retreats with you; a companion with loyalty weights
   // advances while you fall back.* Bravery is a threshold, not a gradient.
-  s.cover = (c.loyalty - c.caution * 1.6) * 2.40
+  // ⚠ `loyalty - caution`, with no fudge factor, because the doc's sentence has none:
+  // *a companion with self-preservation weights retreats with you; a companion with
+  // loyalty weights advances while you fall back.* The threshold is simply which weight
+  // is larger.
+  //
+  // The first version subtracted `caution * 1.6`, which sounds harsher and IS harsher in
+  // the wrong place: base caution is 0.15, so it ate 0.24 and a machine carrying
+  // ATTENDANCE ... the very first fragment the opening puts in your hands, three times
+  // more loyal than cautious ... still would not advance. Measured: a bot that built a
+  // real companion over three minutes never once covered, never exposed itself, and so
+  // never got hurt, which quietly broke the gate's own precondition.
+  //
+  //   starter      0.15 - 0.15 =  0.00  -> never covers
+  //   ATTENDANCE   0.45 - 0.15 =  0.30  -> covers
+  //   PROX WARD    0.70 - 0.15 =  0.55  -> covers decisively
+  //   PRESERVATION 0.40 - 0.60 = -0.20  -> never, whatever else it carries
+  s.cover = (c.loyalty - c.caution) * 2.40
           * (p.retreating ? 1 : 0) * (nearest ? clamp(1 - dT / 400, 0, 1) : 0)
           - low * 0.5
 
