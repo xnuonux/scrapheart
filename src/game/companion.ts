@@ -21,27 +21,30 @@ export interface Body {
   /** perception radius */
   gpu: number
   /**
-   * ⚠ NOT WIRED AT P0. `charge` on the Companion does the actual battery work (it
-   * drains under sustained activity and gates `low` in the scorer). This capacity stat
-   * is read by nothing. Left in because the organ set is `IND-34c` canon and P1 needs
-   * it, but it is declared here as a promise and not as a behaviour ... the same shape
-   * as `retreating`, which sat declared and unwritten and cost this build its entire
-   * covering system.
+   * CAPACITY. ⚠ `charge` is the live level; this is how much of it there is. A bigger
+   * battery drains slower under sustained activity and recovers faster at rest, so a
+   * machine built for endurance genuinely fights longer before it stops fighting.
+   * `IND-34i` has cold weather attacking exactly this organ.
    */
   battery: number
+  /** slots that take any fragment */
   sockets: number
   /**
-   * ⚠ ALSO NOT WIRED. `Fragment.shape` marks two fragments 'aux' (IMPACT BRACE,
-   * PRESERVATION) and `install()` never checks it, so shaped sockets do not exist and
-   * an aux fragment currently fits anywhere. **Implementing this at P0 would make
-   * IMPACT BRACE uninstallable**, since the starter body has zero aux sockets, and the
-   * interpose it grants would then come only from the heart. That is a real design
-   * call, not a bug fix, and it belongs to a human.
+   * SHAPED SLOTS. `Fragment.shape === 'aux'` fits ONLY here; an unshaped fragment fits
+   * anywhere. ⚠ The total socket count is unchanged (2 + 1 rather than 3), so this adds
+   * a real constraint without quietly nerfing capacity ... an aux fragment now competes
+   * for one specific slot instead of any of them.
    */
   auxSockets: number
 }
 
-export const STARTER_BODY: Body = { ram: 2, cpu: 0.7, gpu: 170, battery: 1, sockets: 3, auxSockets: 0 }
+// ⚠ 2 + 1 rather than 3 + 0: the same three slots, but the third is SHAPED. an aux
+// fragment (IMPACT BRACE, PRESERVATION) now has exactly one home and competes for it.
+export const STARTER_BODY: Body = { ram: 2, cpu: 0.7, gpu: 170, battery: 1, sockets: 2, auxSockets: 1 }
+
+/** total slots, and the index at which the shaped ones begin. */
+export const socketCount = (b: Body) => b.sockets + b.auxSockets
+export const isAuxSlot = (b: Body, slot: number) => slot >= b.sockets
 
 export class Companion {
   x = 0; y = 0; prevX = 0; prevY = 0
@@ -69,6 +72,23 @@ export class Companion {
   careShown = 0
   /** so the "it is hurt" line stays rare enough to be worth reading */
   hurtAnnounced = false
+
+  /**
+   * MARKING (`IND-34c`). "it flags what it perceives before you do. a high-perception
+   * companion is an early warning system, and a low one is a liability you love."
+   *
+   * 🚨 And in the same breath: **"it never points with a UI marker and it never says
+   * there is something over here. It stands somewhere and looks, and the player learns
+   * to read that."**
+   *
+   * ⚠ So marking cannot be an icon or a line. It is a FACING, held toward the thing it
+   * has noticed and you have not, at a range past your own sight. The whole mechanic is
+   * that you learn to watch where your machine is looking. SURVEY OPTIC granted this and
+   * nothing read it for the life of the project.
+   */
+  facing = 0
+  /** what it is currently looking at, if anything. never drawn as a marker. */
+  marked: { x: number; y: number } | null = null
 
   /**
    * IND-34c §what death means. The fragments survive you. The relationship does not,
@@ -145,6 +165,9 @@ export class Companion {
   install(f: Fragment, slot: number) {
     if (slot < 0 || slot >= this.installed.length) return false
     if (this.installed[slot]) return false
+    // ⚠ SHAPE. an 'aux' fragment fits only a shaped slot; an unshaped one fits anywhere.
+    // `Fragment.shape` was set on every fragment in the catalogue and checked by nothing.
+    if (f.shape === 'aux' && !isAuxSlot(this.body, slot)) return false
     this.installed[slot] = f
     this.recompute()
     return true

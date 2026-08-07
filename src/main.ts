@@ -175,7 +175,11 @@ export function refreshPack() {
       // ⚠ wear is shown on the socket, because pulling a piece out costs something and
       // the player has to be able to see what a fragment has already been through.
       const wear = f && f.degradation > 0 ? ` <span class="dim">${Math.round(f.degradation * 100)}% worn</span>` : '';
-      return `<div class="slot ${f ? 'full' : 'empty'}" data-s="${i}">${f ? f.name + wear : 'empty'}</div>`;
+      // ⚠ a SHAPED slot must be visible, or an install that silently refuses reads as a
+      // broken button rather than as a rule.
+      const aux = i >= c.body.sockets;
+      const label = f ? f.name + wear : (aux ? 'empty <span class="dim">shaped</span>' : 'empty');
+      return `<div class="slot ${f ? 'full' : 'empty'}${aux ? ' aux' : ''}" data-s="${i}">${label}</div>`;
     }).join('')}` : ''}
     ${world.banked.length ? `<h2>KEPT <span class="dim">safe</span></h2>${world.banked.map((f, i) =>
       `<div class="frag kept" data-k="${i}"><b>${f.name}</b><span class="dim">${f.provenance}</span>
@@ -220,6 +224,9 @@ ui.addEventListener('click', e => {
       list.splice(selected.i, 1); selected = null
       world.log(`installed: ${f.name}`)
       refreshPack()
+    } else if (f && f.shape === 'aux') {
+      // ⚠ say WHY. a refusal with no reason is indistinguishable from a bug.
+      world.log(`${f.name} only fits the shaped socket.`)
     }
   }
 })

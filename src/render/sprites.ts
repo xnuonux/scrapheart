@@ -81,7 +81,7 @@ export function drawMachine(cx: CanvasRenderingContext2D, x: number, y: number, 
 /** the companion. assembled, so its silhouette grows with what is installed. */
 export function drawCompanion(
   cx: CanvasRenderingContext2D, x: number, y: number, parts: number, exposure: number, hurt: number,
-  empty = 0, mending = false,
+  empty = 0, mending = false, facing = 0, marking = false,
 ) {
   if (exposure > 0) {
     cx.strokeStyle = hex(P.comp, 0.22 * exposure)
@@ -116,9 +116,18 @@ export function drawCompanion(
   // menu. An empty socket is never hidden and the game never suggests filling it.
   cx.strokeStyle = hex(P.compDim, 0.5); cx.lineWidth = 1
   for (let i = 0; i < empty; i++) cx.strokeRect(x - 4.5 + (parts + i) * 4, y + 6.5, 2, 1)
-  // the light it has instead of a face
-  cx.fillStyle = hex(P.glow, 0.8)
-  cx.fillRect(x - 1, y - 2, 2, 2)
+  // 🚨 the light it has instead of a face, and IND-34c's whole marking mechanic: it sits
+  // on the side the machine is LOOKING. no icon, no arrow, no line of dialogue ... the
+  // player learns to read a two-pixel light, which is worth more than any waypoint.
+  const lx = x + Math.cos(facing) * 3.4, ly = y + Math.sin(facing) * 3.4
+  cx.fillStyle = hex(P.glow, marking ? 0.95 : 0.8)
+  cx.fillRect(lx - 1, ly - 1, 2, 2)
+  // ⚠ when it has noticed something you have not, the light steadies and reaches a
+  // little further. that is the ONLY tell, and it is deliberately easy to miss.
+  if (marking) {
+    cx.fillStyle = hex(P.glow, 0.22)
+    cx.fillRect(x + Math.cos(facing) * 6 - 1, y + Math.sin(facing) * 6 - 1, 2, 2)
+  }
 }
 
 /**

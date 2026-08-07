@@ -2,7 +2,7 @@
 // mid-journey and never resumed. Densely packed, mostly harmless. The density is the
 // tutorial ... a new player learns what a wreck looks like by standing in ten thousand.
 
-import { Companion, decide, perceive, STARTER_BODY } from './companion'
+import { Companion, decide, perceive, socketCount, STARTER_BODY } from './companion'
 import { Fragment, makeFragment } from './fragments'
 import { sfx } from '../audio/sfx'
 import { hitstop } from '../core/loop'
@@ -151,6 +151,14 @@ export function inWeather(w: World, p: { x: number; y: number }): number {
  * number is too small, and it is the only thing that needs changing.
  */
 const HANDLER_GRACE = 480
+
+/**
+ * How close a threat has to be before the player has plainly seen it themselves, so a
+ * companion looking at it is news rather than an echo. Roughly two-thirds of a screen
+ * half-width at 1280 ... comfortably on screen and noticed.
+ * ⚠ Marking only means anything in the band between this and the companion's reach.
+ */
+const MARK_OBVIOUS = 420
 
 /** damage a runner deals at a given depth. ~14 hits at the anchor, ~4.5 in the deep. */
 const runnerDamage = (d: number) => 7 + d * 15
@@ -681,7 +689,9 @@ export class World {
     c.x = this.chassis.x; c.y = this.chassis.y + 20
     c.prevX = c.x; c.prevY = c.y
     c.body = { ...STARTER_BODY }
-    c.installed = new Array(c.body.sockets).fill(null)
+    // ⚠ sockets + auxSockets. sizing on `sockets` alone silently dropped every shaped
+    // slot the body declared, which is how `auxSockets` stayed invisible.
+    c.installed = new Array(socketCount(c.body)).fill(null)
     c.install(makeFragment('gait'), 0)   // it can move. that is all, at first.
     c.recompute()
     this.companion = c
@@ -698,6 +708,10 @@ function act(c: Companion, w: World, dt: number) {
   // the mind decided to go somewhere the body could not see. See perceive().
   const { nearest: th, lootNear, interesting } = perceive(c, w)
 
+  // BEHAVIOUR-DEFAULT: follow
+  // ⚠ `follow` has no case below ... it IS this, the target before the switch runs. That
+  // is legitimate, but it was only discoverable by noticing an absence, and the audit
+  // correctly flagged it as "scored but never acted on". Declared rather than implied.
   let tx = p.x, ty = p.y + 26
   c.exposure = 0
 
@@ -722,9 +736,46 @@ function act(c: Companion, w: World, dt: number) {
   if (d > 4) { c.x += (tx - c.x) / d * speed; c.y += (ty - c.y) / d * speed }
   c.x = clamp(c.x, 12, W - 12); c.y = clamp(c.y, 12, H - 12)
 
-  // battery: sustained activity drains, standing near the player recovers
+  // ── MARKING (IND-34c). no marker, no line. it looks, and you learn to read it. ──
+  c.marked = null
+  if (c.can.mark) {
+    // ⚠ the early warning is the RANGE: it notices past what you can see, so its posture
+    // is information you could not have had. a low-GPU machine marks late and is "a
+    // liability you love"; a high-GPU one is why you survive.
+    // ⚠ THE BAND HAS TO BE REAL. First numbers gave a reach of gpu*1.9 = 323px against a
+    // "you already see it" gate of 300px, so marking could only ever fire in a 23-pixel
+    // shell and measured as dead. The window is the mechanic: below MARK_OBVIOUS the
+    // player can see it themselves and a posture tells them nothing; past `reach` even
+    // the machine does not know. Between the two is the only place an early warning
+    // exists, and it has to be wide enough to live in.
+    const reach = c.body.gpu * 4.5 * (1 - 0.5 * w.dustAt(c))
+    let best = null, bestD = reach
+    for (const t of w.threats) {
+      if (!isHostile(t)) continue
+      const dp = dist(p, t)
+      if (dp < MARK_OBVIOUS) continue   // already on screen and your own problem
+      const dc = dist(c, t)
+      if (dc < bestD) { bestD = dc; best = t }
+    }
+    c.marked = best ? { x: best.x, y: best.y } : null
+  }
+  // face what it noticed; otherwise face where it is going
+  const fx = c.marked ? c.marked.x - c.x : (d > 4 ? tx - c.x : p.x - c.x)
+  const fy = c.marked ? c.marked.y - c.y : (d > 4 ? ty - c.y : p.y - c.y)
+  if (fx || fy) {
+    const want = Math.atan2(fy, fx)
+    // turn toward it rather than snapping, so the head movement itself reads
+    let diff = ((want - c.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI
+    c.facing += diff * Math.min(1, dt * 7)
+  }
+
+  // battery: sustained activity drains, standing near the player recovers.
+  // ⚠ scaled by CAPACITY, which was a declared organ that nothing read. a bigger battery
+  // drains slower and recovers faster, so "it fights well and then stops fighting"
+  // (IND-34i) becomes a property of what you built rather than a constant.
   const busy = c.behaviour === 'engage' || c.behaviour === 'cover' || c.behaviour === 'flee'
-  c.charge = clamp(c.charge + (busy ? -dt * 0.10 : dt * 0.16), 0, 1)
+  const cap = Math.max(0.35, c.body.battery)
+  c.charge = clamp(c.charge + (busy ? -dt * 0.10 / cap : dt * 0.16 * cap), 0, 1)
 
   if (c.behaviour === 'engage' && th && dist(c, th) < 30) th.hp -= 20 * dt
   if (c.behaviour === 'cover' && th && dist(c, th) < 44) th.hp -= 9 * dt

@@ -267,7 +267,7 @@ export function render(cx: CanvasRenderingContext2D, w: World, alpha: number, vw
     // ⚠ `hurt` was hardcoded to 0, so the damage state the whole gate depends on was
     // never once drawn. It is 0..1 of how far down it is.
     drawCompanion(cx, px, py, c.liveFragments.length, c.exposure, 1 - c.hp / c.maxHp,
-                  c.emptySockets, w.mending > 0)
+                  c.emptySockets, w.mending > 0, c.facing, !!c.marked)
   }
 
   const p = w.player
