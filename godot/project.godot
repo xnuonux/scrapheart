@@ -1,0 +1,71 @@
+; SCRAPHEART · godot 4.7
+;
+; ⚠ this project is a PORT TARGET, not a rewrite. the web build in ../src is the
+; reference implementation, and everything in ../NEXT.md that was proven with a number
+; ports across unchanged. the renderer is what changes.
+;
+; the discipline that got the web build here, carried over:
+;   · every claim gets a receipt (see res://tests, run headless)
+;   · a rule nobody can run is a wish (tuning.gd is the single source of numbers)
+;   · a typechecker proves the pieces fit; it cannot prove any of them move
+
+config_version=5
+
+[application]
+
+config/name="SCRAPHEART"
+config/description="one zone, one companion. the gate is whether people name it."
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+config/icon="res://icon.svg"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=800
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[input]
+
+move_up={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"keycode":87),Object(InputEventKey,"keycode":4194320)]
+}
+move_down={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"keycode":83),Object(InputEventKey,"keycode":4194322)]
+}
+move_left={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"keycode":65),Object(InputEventKey,"keycode":4194319)]
+}
+move_right={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"keycode":68),Object(InputEventKey,"keycode":4194321)]
+}
+recall={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"keycode":81)]
+}
+mend={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"keycode":69)]
+}
+pack={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"keycode":73)]
+}
+
+[physics]
+
+; ⚠ 60Hz fixed. the web build runs a hand-rolled fixed-timestep loop for exactly this,
+; and _physics_process gives it for free. every tuning number below assumes 1/60.
+common/physics_ticks_per_second=60
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/canvas_textures/default_texture_filter=0
+environment/defaults/default_clear_color=Color(0.0196, 0.027, 0.039, 1)

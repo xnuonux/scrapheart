@@ -6,3 +6,6 @@ dist/
 # ⚠ SCRAPHEART.html is a BUILD OUTPUT and it is committed on purpose. It is the only
 # way someone without npm can play this, and the P0 gate needs ten of those people.
 # Rebuild with `npm run pack` after any change to src, or it silently ships stale.
+.shots/
+godot/.godot/
+godot/android/
