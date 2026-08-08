@@ -1,0 +1,1029 @@
+extends RefCounted
+class_name GameWorld
+
+## THE HALT ... the port of src/game/world.ts, which is the reference implementation.
+##
+## IND-34b: a transit interchange where several thousand machines stopped mid-journey
+## and never resumed. densely packed, mostly harmless. the density is the tutorial.
+##
+## ⚠ every measured number lives in Tuning. a literal that appears here appears in the
+## web build at the same place; if the two ever disagree, the web build is right and
+## this file has a bug.
+##
+## the mind (CompanionMind) holds the mental state; THIS holds the physical world and
+## the companion's body. the mind reads the world through the exact surface the parity
+## test proved: player_pos, companion_pos, threats[].pos, is_hostile, dust_at, log_line.
+
+
+# ── entities ────────────────────────────────────────────────────────────────────
+
+class Threat:
+	var pos: Vector2
+	var r := 10.0
+	var hp := 30.0
+	var max_hp := 30.0
+	var speed := 0.5
+	var wind := 0.0            ## the telegraph. built to be safe around humans.
+	var striking := false
+	var alive := true
+	var kind := "runner"       ## runner | stopped | warden | caster
+	var seed_v := 0
+	var announced := false
+	var fire_cd := 0.0
+	## IND-34l · wardens by degree. 1 is intact. 2 announced and CANNOT follow through.
+	var degree := 0
+	var rearm_at := 0.0
+
+class SalvageItem:
+	var pos: Vector2
+	var frag := ""             ## "" = bare scrap; else a Fragments catalogue id
+	var worn := 0.0
+
+class InterestItem:
+	var pos: Vector2
+	var seen := false
+	var kind := "view"         ## view | arrangement | lamp
+	## how hard it pulls. 1 is a nice view. ⚠ IND-34k's heart is the ONLY thing above 1.
+	var pull := 1.0
+
+class Wreck:
+	var pos: Vector2
+	var s := 10.0
+	var seed_v := 0
+
+class HandlerBody:
+	var pos: Vector2
+	var prev: Vector2
+	var hp := 30.0
+	var alive := true
+	var r := 6.0
+	var fire_cd := 0.0
+	var bob := 0.0
+
+class Bullet:
+	var pos: Vector2
+	var vel: Vector2
+	var life := 1.0
+	var from := "player"       ## player | comp | handler | threat
+
+class WeatherBody:
+	var pos: Vector2
+	var vel: Vector2
+	var r := 300.0
+	var strength := 0.0
+	var age := 0.0
+	var life := 78.0
+
+
+# ── the player ──────────────────────────────────────────────────────────────────
+
+var player_pos := Vector2(Tuning.W / 2.0, Tuning.H / 2.0)
+var player_prev := player_pos
+var player_hp: float = Tuning.PLAYER_HP
+var player_r := 8.0
+var player_retreating := false
+var last_hurt := -99.0
+var heat := 0.0
+var overheated := 0.0
+var fire_cd := 0.0
+
+# ── the companion: the mind thinks, the world carries the body ──────────────────
+
+var mind: CompanionMind = null          ## null until the chassis is taken
+var companion_pos := Vector2.ZERO
+var companion_prev := Vector2.ZERO
+var companion_r := 7.0
+var companion_hp := 50.0
+var companion_max_hp := 50.0
+var comp_name := ""
+var named := false
+var exposure := 0.0
+var repair_cd := 0.0
+var poi_active := false
+var poi := Vector2.ZERO
+
+## IND-34c: it does not die with you. it stays where you fell, and it waits.
+var waiting_mind: CompanionMind = null
+var waiting_pos := Vector2.ZERO
+var waiting_name := ""
+var waiting_since := 0.0
+
+# ── the run ─────────────────────────────────────────────────────────────────────
+
+var run := 1
+var run_started := 0.0
+var records: Array = []                 ## { run, seconds, kept, deepest }
+var deepest := 0.0
+var death_flash := 0.0
+var recall_flash := 0.0
+var recall_count := 0
+var abandoned := 0
+var interposes := 0
+var mending := 0.0
+
+# ── the field ───────────────────────────────────────────────────────────────────
+
+var threats: Array = []
+var bullets: Array = []
+var salvage: Array = []
+var interest: Array = []
+var wrecks: Array = []
+var pack: Array = []                    ## carried. AT RISK. death takes all of it.
+var banked: Array = []                  ## carried home. SAFE. the recall's only purchase.
+var chassis_pos := Vector2.ZERO
+var chassis_taken := false
+var has_chassis := true
+var weather: WeatherBody = null
+var weather_timer := 55.0
+
+var handler: HandlerBody = null
+var handler_met := false
+var handler_met_at := -1.0
+var handler_lost_at := -1.0
+var warden_spawned := false
+
+var t := 0.0
+var logs: Array = []                    ## { text, t }
+var spawn_timer := 3.0
+var anchor := Vector2(Tuning.W / 2.0, Tuning.H / 2.0)
+
+## receipts the scene consumes each frame: sound cues + hitstop seconds
+var sounds: Array = []
+var hitstop_s := 0.0
+
+var spawn_rng: Lcg = Lcg.from_string("halt-spawns")
+
+
+func _init() -> void:
+	generate()
+
+
+# ── the shared predicates the mind reads ────────────────────────────────────────
+
+## 🚨 is this a THREAT, or furniture in the same array? IND-34l's stopped ones are
+## shootable salvage, not danger. one predicate; a fourth kind declares itself here.
+func is_hostile(th) -> bool:
+	return th.alive and th.kind != "stopped"
+
+
+func dust_at(p: Vector2) -> float:
+	if weather == null:
+		return 0.0
+	var d := p.distance_to(weather.pos)
+	if d > weather.r:
+		return 0.0
+	return minf(1.0, (1.0 - d / weather.r) * 1.8) * weather.strength
+
+
+func companion_name() -> String:
+	return comp_name if comp_name != "" else "it"
+
+
+func log_line(text: String) -> void:
+	# ⚠ a repeated line refreshes its timestamp instead of stacking. "it broke off."
+	# six times in a row trains the player to stop reading the log, which costs every
+	# message that matters ... including the ones the gate depends on.
+	if logs.size() > 0 and logs[0].text == text and t - logs[0].t < 8.0:
+		logs[0].t = t
+		return
+	logs.push_front({ "text": text, "t": t })
+	if logs.size() > 6:
+		logs.pop_back()
+
+
+func cue(name: String) -> void:
+	sounds.append(name)
+
+
+func hitstop(ms: float) -> void:
+	hitstop_s = maxf(hitstop_s, ms / 1000.0)
+
+
+# ── generation ──────────────────────────────────────────────────────────────────
+
+func generate() -> void:
+	var r := Lcg.from_string("the-halt")
+	# ten thousand stopped machines, rendered as a field of wrecks
+	for i in 340:
+		var wk := Wreck.new()
+		wk.pos = Vector2(r.next() * Tuning.W, r.next() * Tuning.H)
+		wk.s = 6.0 + r.next() * 14.0
+		wk.seed_v = int(r.next() * 1000.0)
+		wrecks.append(wk)
+
+	# THE OPENING. findability is not polish at P0, it is whether the game has an
+	# opening at all: the chassis visible from spawn, a trail of salvage to it.
+	chassis_pos = Vector2(Tuning.W / 2.0 + 150.0, Tuning.H / 2.0 - 95.0)
+	var trail := 7
+	for i in trail:
+		var tt := float(i + 1) / float(trail + 1)
+		var sv := SalvageItem.new()
+		sv.pos = Vector2(
+			Tuning.W / 2.0 + 150.0 * tt + (r.next() - 0.5) * 54.0,
+			Tuning.H / 2.0 - 95.0 * tt + (r.next() - 0.5) * 54.0)
+		sv.frag = "attend" if i == trail - 1 else ""   # the first fragment sits ON the chassis
+		salvage.append(sv)
+	# and the rest of the zone, scattered but reachable
+	var openers := ["repair", "prudence", "pursuit", "inquiry", "ward"]
+	for i in 16:
+		var a := r.next() * TAU
+		var d := 210.0 + r.next() * 430.0
+		var sv2 := SalvageItem.new()
+		sv2.pos = Vector2(
+			clampf(Tuning.W / 2.0 + cos(a) * d, 40.0, Tuning.W - 40.0),
+			clampf(Tuning.H / 2.0 + sin(a) * d, 40.0, Tuning.H - 40.0))
+		sv2.frag = openers[i] if i < 5 else ""
+		salvage.append(sv2)
+
+	# things worth nothing. one close, so the category is learnable.
+	var lamp := InterestItem.new()
+	lamp.pos = Vector2(Tuning.W / 2.0 - 190.0, Tuning.H / 2.0 + 130.0)
+	lamp.kind = "lamp"
+	interest.append(lamp)
+	var kinds := ["view", "arrangement", "lamp"]
+	for i in 8:
+		var it := InterestItem.new()
+		it.pos = Vector2(110.0 + r.next() * (Tuning.W - 220.0), 110.0 + r.next() * (Tuning.H - 220.0))
+		it.kind = kinds[int(r.next() * 3.0)]
+		interest.append(it)
+
+	# IND-34k step 3: THE CORRIDOR. things already destroyed, in a line, leading east.
+	for i in 26:
+		var tt2 := float(i) / 25.0
+		var wk2 := Wreck.new()
+		wk2.pos = Vector2(
+			860.0 + tt2 * 620.0 + (r.next() - 0.5) * 70.0,
+			Tuning.H / 2.0 + sin(tt2 * 2.4) * 90.0 + (r.next() - 0.5) * 80.0)
+		wk2.s = 9.0 + r.next() * 13.0
+		wk2.seed_v = int(r.next() * 1000.0)
+		wrecks.append(wk2)
+
+	# deeper is worth it. that is the whole economy.
+	var deep_frags := ["inquiry", "pursuit", "prudence", "brace", "ward", "mark", "salvage"]
+	for i in 11:
+		var sv3 := SalvageItem.new()
+		sv3.pos = Vector2(
+			Tuning.DEEP_X + 60.0 + r.next() * (Tuning.W - Tuning.DEEP_X - 140.0),
+			110.0 + r.next() * (Tuning.H - 220.0))
+		sv3.frag = deep_frags[i] if i < 7 else ""
+		salvage.append(sv3)
+
+	# ── IND-34l · THE ONES THAT GAVE UP. still ON. found individually, never grouped. ──
+	var spots := [Vector2(300, 260), Vector2(1180, 250), Vector2(430, 980),
+		Vector2(1420, 900), Vector2(900, 190), Vector2(1300, 640)]
+	for s in spots:
+		var st := Threat.new()
+		st.pos = s + Vector2((r.next() - 0.5) * 90.0, (r.next() - 0.5) * 90.0)
+		st.r = 11.0
+		st.hp = 30.0
+		st.max_hp = 30.0
+		st.speed = 0.0
+		st.kind = "stopped"
+		st.seed_v = int(r.next() * 1000.0)
+		threats.append(st)
+
+	# ⚠ IND-34l: rare, unmarked, placed where nobody has a reason to be. the broken one.
+	var bw := Threat.new()
+	bw.pos = Vector2(1460, 1080)
+	bw.r = 26.0
+	bw.hp = 340.0
+	bw.max_hp = 340.0
+	bw.speed = 0.0
+	bw.kind = "warden"
+	bw.seed_v = 12
+	bw.degree = 2
+	threats.append(bw)
+
+	for i in 5:
+		spawn_threat()
+
+
+func spawn_threat() -> void:
+	# ⚠ threats are built for where the PLAYER is, not the edge they walk in from.
+	var d := Tuning.depth_at(player_pos.x)
+	var r := spawn_rng
+	var edge := int(r.next() * 4.0)
+	var p: Vector2
+	match edge:
+		0: p = Vector2(r.next() * Tuning.W, -30)
+		1: p = Vector2(Tuning.W + 30, r.next() * Tuning.H)
+		2: p = Vector2(r.next() * Tuning.W, Tuning.H + 30)
+		_: p = Vector2(-30, r.next() * Tuning.H)
+	# casters only exist past the shallows: the first thing a player learns is walking,
+	# the second is that walking stops being enough.
+	var caster := d > 0.34 and r.next() < 0.22 + d * 0.26
+	var th := Threat.new()
+	th.pos = p
+	th.r = 9.0 if caster else 10.0
+	th.hp = (20.0 + d * 26.0) if caster else (24.0 + d * 30.0)
+	th.max_hp = th.hp
+	th.speed = (0.34 + r.next() * 0.2) if caster else (0.5 + r.next() * 0.35)
+	th.kind = "caster" if caster else "runner"
+	th.seed_v = int(r.next() * 1000.0)
+	th.fire_cd = 1.2 + r.next()
+	threats.append(th)
+
+
+func spawn_handler() -> void:
+	if handler != null or handler_met:
+		return
+	var h := HandlerBody.new()
+	h.pos = Vector2(
+		clampf(player_pos.x - 120.0, 40.0, Tuning.W - 40.0),
+		clampf(player_pos.y + 90.0, 40.0, Tuning.H - 40.0))
+	h.prev = h.pos
+	handler = h
+	handler_met = true
+	handler_met_at = t
+	log_line("something small is following you.")
+
+
+## 🚨 THE PERMANENT RULE, not a scripted death. a warden one-shots a handler. always,
+## everywhere, forever. it kills the dog with exactly as much feeling as a crate.
+func kill_handler() -> void:
+	if handler == null or not handler.alive:
+		return
+	handler.alive = false
+	handler_lost_at = t
+	hitstop(160)
+	cue("destroy")
+	# IND-34k: something in it is still on. the first glowing fragment the player ever
+	# sees, and it belonged to someone they knew.
+	var sv := SalvageItem.new()
+	sv.pos = handler.pos
+	sv.frag = "heart"
+	sv.worn = 1.0
+	salvage.append(sv)
+	# and the companion's OWN curiosity brings it there. not scripted ... pull.
+	var it := InterestItem.new()
+	it.pos = handler.pos
+	it.kind = "lamp"
+	it.pull = Tuning.HEART_PULL
+	interest.append(it)
+	log_line("it stops moving.")
+
+
+func spawn_weather() -> void:
+	var r := spawn_rng
+	var from_west := r.next() < 0.5
+	var wx := WeatherBody.new()
+	wx.pos = Vector2(-320.0 if from_west else Tuning.W + 320.0, 200.0 + r.next() * (Tuning.H - 400.0))
+	wx.r = 300.0 + r.next() * 190.0
+	wx.vel = Vector2((1.0 if from_west else -1.0) * (17.0 + r.next() * 12.0), (r.next() - 0.5) * 9.0)
+	wx.life = 78.0 + r.next() * 40.0
+	weather = wx
+	log_line("there is dust on the horizon.")
+
+
+func spawn_warden() -> void:
+	if warden_spawned:
+		return
+	warden_spawned = true
+	var th := Threat.new()
+	th.pos = Vector2(
+		clampf(player_pos.x + 300.0, 40.0, Tuning.W - 40.0),
+		clampf(player_pos.y - 60.0, 40.0, Tuning.H - 40.0))
+	th.r = 26.0
+	th.hp = 340.0
+	th.max_hp = 340.0
+	th.speed = 0.42
+	th.kind = "warden"
+	th.seed_v = 7
+	th.degree = 1
+	threats.append(th)
+
+
+## leaving the site, however you left it. ONE implementation ... the recall and dying
+## drifted apart once (dying deleted the warden forever) and must not again.
+func reset_site() -> void:
+	var keep := threats.filter(func(th): return th.alive and (th.kind == "warden" or th.kind == "stopped"))
+	threats = []
+	for k in keep:
+		if k.kind == "warden" and k.degree != 2:
+			k.pos.x = clampf(maxf(k.pos.x, Tuning.DEEP_X + 120.0), 40.0, Tuning.W - 40.0)
+		k.wind = 0.0
+		k.striking = false
+		threats.append(k)
+	spawn_timer = 4.0
+	bullets = []
+
+
+## IND-34c: the single most important mechanic in the game. instant, always available,
+## never blocked. ⚠ NEVER add a cooldown, a channel, or a boss-room block. what it BUYS
+## is the bank; without the bank it is a teleport and the risk economy is decorative.
+func recall() -> void:
+	var left := 0
+	for s in salvage:
+		if s.pos.distance_to(player_pos) < 420.0:
+			left += 1
+	abandoned += left
+
+	var carried := pack.size()
+	for f in pack:
+		banked.append(f)
+	pack = []
+
+	player_prev = player_pos
+	player_pos = anchor
+	if mind != null:
+		companion_pos = anchor + Vector2(20, 20)
+		companion_prev = companion_pos
+
+	reset_site()
+	recall_flash = 1.0
+	recall_count += 1
+	cue("recall")
+	if carried > 0:
+		log_line("you left. %d kept%s." % [carried, (", %d still out there" % left) if left > 0 else ""])
+	else:
+		log_line("you left with nothing. %d still out there." % left if left > 0 else "you left.")
+
+
+## IND-34c §what death means. character gone, gear gone (banked TOO), fame recorded,
+## start again. 🚨 and your companion does not die. it stays where you fell. it waits.
+func die() -> void:
+	records.push_front({
+		"run": run, "seconds": roundi(t - run_started),
+		"kept": banked.size(), "deepest": roundi(deepest),
+	})
+	if records.size() > 5:
+		records.pop_back()
+
+	if mind != null:
+		waiting_mind = mind
+		waiting_pos = player_pos
+		waiting_name = comp_name
+		waiting_since = t
+		mind.behaviour = CompanionMind.B.FOLLOW
+		mind.warm.clear()
+		mind.swap_cd = 0.0
+		companion_hp = companion_max_hp
+		mind = null
+
+	pack = []
+	banked = []      # ⚠ BOTH. banked is safe from a recall, not from dying.
+	handler = null   # somebody else's machine, and it does not survive you either.
+
+	run += 1
+	run_started = t
+	deepest = 0.0
+	player_hp = Tuning.PLAYER_HP
+	heat = 0.0
+	overheated = 0.0
+	player_pos = anchor
+	player_prev = anchor
+	reset_site()
+	death_flash = 1.0
+	hitstop(320)
+	cue("destroy")
+	log_line("you die here.")
+	if waiting_mind != null:
+		log_line("it is still standing where you fell.")
+
+
+## going back for it. no prompt, no marker ... you walk to where you died and it is there.
+## ⚠ it does not simply resume: fragments intact, and it follows a NEW person cautiously.
+func retrieve() -> void:
+	if waiting_mind == null or mind != null:
+		return
+	mind = waiting_mind
+	mind.bond = Tuning.BOND_ON_RETRIEVE
+	mind.recompute()
+	comp_name = waiting_name
+	companion_pos = waiting_pos
+	companion_prev = waiting_pos
+	waiting_mind = null
+	cue("stand")
+	log_line("%s follows you. not like before." % companion_name())
+
+
+func take_chassis() -> void:
+	if not has_chassis or chassis_taken:
+		return
+	chassis_taken = true
+	mind = CompanionMind.new()
+	mind.installed = [null, null, null]
+	mind.install(Fragments.make("gait"), 0)   # it can move. that is all, at first.
+	mind.recompute()
+	companion_pos = chassis_pos + Vector2(0, 20)
+	companion_prev = companion_pos
+	companion_hp = companion_max_hp
+	cue("stand")
+	log_line("it stands up.")
+
+
+# ── damage doors. one for the player, one for the threats. never a third path. ──
+
+func hurt_player(dmg: float, stop_ms: float) -> void:
+	if mind != null and mind.try_interpose(self, dmg):
+		# it costs the machine the hit AND the piece that let it (mind consumed it).
+		companion_hp = maxf(1.0, companion_hp - dmg)
+		last_hurt = t
+		hitstop(260)
+		cue("destroy")
+		interposes += 1
+		return
+	player_hp -= dmg
+	last_hurt = t
+	cue("hurt")
+	hitstop(stop_ms)
+
+
+## 🚨 the single damage door for threats. death happens HERE, whoever caused it,
+## whatever branch the behaviour was in. the web build shipped an immortal machine
+## (the degree-2 warden) by scattering death checks under `continue`s. never again,
+## in either engine.
+func hurt_threat(th, dmg: float) -> void:
+	if not th.alive:
+		return
+	th.hp -= dmg
+	if th.hp > 0.0:
+		return
+	th.alive = false
+	cue("destroy")
+	if th.kind == "stopped":
+		# IND-34l: the intact ones are BETTER salvage. the game never comments.
+		var a := SalvageItem.new()
+		a.pos = th.pos + Vector2(-9, 0)
+		a.frag = pick_frag()
+		salvage.append(a)
+		var b := SalvageItem.new()
+		b.pos = th.pos + Vector2(9, 6)
+		b.frag = pick_frag()
+		salvage.append(b)
+	elif th.kind == "warden":
+		var w := SalvageItem.new()
+		w.pos = th.pos
+		w.frag = "selfpres"
+		salvage.append(w)
+		hitstop(220)
+	elif th.kind == "caster":
+		var c := SalvageItem.new()
+		c.pos = th.pos
+		c.frag = pick_frag() if randf() < 0.30 else ""
+		salvage.append(c)
+	else:
+		# ⚠ IND-34i: better salvage under bad weather. the whole risk economy in a line.
+		var odds := 0.22 + dust_at(th.pos) * 0.34
+		var s := SalvageItem.new()
+		s.pos = th.pos
+		s.frag = pick_frag() if randf() < odds else ""
+		salvage.append(s)
+
+
+func pick_frag() -> String:
+	return Fragments.ROLLABLE[randi() % Fragments.ROLLABLE.size()]
+
+
+# ── the care loop the interposition reads (IND-34a §3 history) ─────────────────
+
+func do_mend(dt: float, holding: bool) -> void:
+	if mind == null or not holding or companion_pos.distance_to(player_pos) > Tuning.MEND_REACH or companion_hp >= companion_max_hp:
+		mending = 0.0
+		return
+	mending += dt
+	companion_hp = minf(companion_max_hp, companion_hp + dt * Tuning.MEND_RATE)
+	var hurt := 1.0 - companion_hp / companion_max_hp
+	# ⚠ repairing next to a machine that gave up is not brave, it is quiet.
+	var danger := 1.0
+	for th in threats:
+		if is_hostile(th) and th.pos.distance_to(player_pos) < 220.0:
+			danger = Tuning.CARE_DANGER_MULT
+			break
+	mind.care_shown += dt * Tuning.CARE_RATE * (0.35 + hurt) * danger
+	if companion_hp >= companion_max_hp and mending > 0.2:
+		log_line("%s is whole again." % companion_name())
+		mending = 0.0
+
+
+# ── the companion acts on what it decided. it is never commanded. ──────────────
+
+func act_companion(dt: float) -> void:
+	var c := mind
+	var speed := 1.55 * 60.0 * dt
+	var per := c.perceive(self)
+	var th = per.nearest
+	var loot = per.loot
+	var interesting = per.interesting
+
+	# behaviour-default: follow ... the target before the switch runs, declared.
+	var target := player_pos + Vector2(0, 26)
+	exposure = 0.0
+	match c.behaviour:
+		CompanionMind.B.ENGAGE:
+			if th != null:
+				target = th.pos
+				exposure = 0.8
+		CompanionMind.B.COVER:
+			if th != null:
+				target = th.pos + (player_pos - th.pos) * 0.3
+				exposure = 1.0
+		CompanionMind.B.REPAIR:
+			target = player_pos
+			exposure = 0.5
+		CompanionMind.B.SALVAGE:
+			if loot != null:
+				target = loot.pos
+				exposure = 0.35
+		CompanionMind.B.INVESTIGATE:
+			if interesting != null:
+				target = interesting.pos
+			else:
+				if not poi_active or companion_pos.distance_to(poi) < 26.0:
+					poi = Vector2(60.0 + randf() * (Tuning.W - 120.0), 60.0 + randf() * (Tuning.H - 120.0))
+					poi_active = true
+				target = poi
+		CompanionMind.B.FLEE:
+			var away_from = th.pos if th != null else player_pos
+			target = companion_pos + (companion_pos - away_from)
+
+	companion_prev = companion_pos
+	var d := companion_pos.distance_to(target)
+	if d > 4.0:
+		companion_pos += (target - companion_pos) / d * speed
+	companion_pos = companion_pos.clamp(Vector2(12, 12), Vector2(Tuning.W - 12, Tuning.H - 12))
+
+	# ── MARKING (IND-34c). no marker, no line. it looks, and you learn to read it. ──
+	c.marked = null
+	if c.can.mark:
+		var reach: float = c.gpu * Tuning.MARK_REACH_MULT * (1.0 - 0.5 * dust_at(companion_pos))
+		var best = null
+		var best_d := reach
+		for th2 in threats:
+			if not is_hostile(th2):
+				continue
+			if player_pos.distance_to(th2.pos) < Tuning.MARK_OBVIOUS:
+				continue   # already on screen and your own problem
+			var dc := companion_pos.distance_to(th2.pos)
+			if dc < best_d:
+				best_d = dc
+				best = th2
+		if best != null:
+			c.marked = { "pos": best.pos }
+
+	# face what it noticed; otherwise face where it is going
+	var fv: Vector2
+	if c.marked != null:
+		fv = c.marked.pos - companion_pos
+	elif d > 4.0:
+		fv = target - companion_pos
+	else:
+		fv = player_pos - companion_pos
+	if fv != Vector2.ZERO:
+		var want := fv.angle()
+		var diff := fposmod(want - c.facing + PI * 3.0, TAU) - PI
+		c.facing += diff * minf(1.0, dt * 7.0)
+
+	# battery: sustained activity drains, standing near the player recovers. ⚠ scaled
+	# by CAPACITY ... a declared organ nothing read, once.
+	var busy: bool = c.behaviour in [CompanionMind.B.ENGAGE, CompanionMind.B.COVER, CompanionMind.B.FLEE]
+	var cap: float = maxf(0.35, c.battery)
+	c.charge = clampf(c.charge + (-dt * 0.10 / cap if busy else dt * 0.16 * cap), 0.0, 1.0)
+
+	# melee, through the door. never a raw subtraction.
+	if c.behaviour == CompanionMind.B.ENGAGE and th != null and companion_pos.distance_to(th.pos) < 30.0:
+		hurt_threat(th, 20.0 * dt)
+	if c.behaviour == CompanionMind.B.COVER and th != null and companion_pos.distance_to(th.pos) < 44.0:
+		hurt_threat(th, 9.0 * dt)
+
+	if c.behaviour == CompanionMind.B.REPAIR and companion_pos.distance_to(player_pos) < 30.0 \
+			and repair_cd <= 0.0 and player_hp < Tuning.PLAYER_HP:
+		player_hp = minf(Tuning.PLAYER_HP, player_hp + 15.0)
+		repair_cd = 2.4
+		cue("repair")
+	repair_cd = maxf(0.0, repair_cd - dt)
+
+	if c.behaviour == CompanionMind.B.SALVAGE and loot != null and companion_pos.distance_to(loot.pos) < 16.0:
+		if loot.frag != "":
+			pack.append(Fragments.make(loot.frag, loot.worn))
+		salvage.erase(loot)
+		cue("pickup")
+
+	# IND-34m: it stops at a thing worth nothing, and that is the only acknowledgement
+	# the beautiful thing ever gets.
+	if c.behaviour == CompanionMind.B.INVESTIGATE and interesting != null \
+			and companion_pos.distance_to(interesting.pos) < 22.0:
+		interesting.seen = true
+		log_line("%s stopped, and looked at something." % companion_name())
+
+
+## the handler. it follows, and it fights a little, badly. ⚠ it must be genuinely good
+## company on its own terms ... if it is only there to die, players feel handled.
+func act_handler(dt: float) -> void:
+	var h := handler
+	h.prev = h.pos
+	h.bob += dt * 7.0
+	h.fire_cd = maxf(0.0, h.fire_cd - dt)
+
+	# ⚠ it does not charge machines that gave up. it is brave, not confused.
+	var th = null
+	var th_d := 230.0
+	for th2 in threats:
+		if is_hostile(th2):
+			var d2 := h.pos.distance_to(th2.pos)
+			if d2 < th_d:
+				th_d = d2
+				th = th2
+
+	# ⚠ it goes AT things. a handler that hangs back is not a handler, it is an escort
+	# mission ... and the version that trailed 42px behind let the PLAYER die to the
+	# warden while the dog stood safely in the back.
+	var target: Vector2 = th.pos if th != null else player_pos
+	var dT := h.pos.distance_to(target)
+	var stop := 52.0 if th != null else 42.0
+	if dT > stop:
+		var sp: float = minf(2.4, 1.55 + dT * 0.006) * 60.0 * dt
+		h.pos += (target - h.pos) / dT * sp
+	h.pos = h.pos.clamp(Vector2(12, 12), Vector2(Tuning.W - 12, Tuning.H - 12))
+
+	if th != null and h.fire_cd <= 0.0:
+		var a: float = (th.pos - h.pos).angle() + (randf() - 0.5) * 0.34   # badly
+		var b := Bullet.new()
+		b.pos = h.pos
+		b.vel = Vector2(cos(a), sin(a)) * 330.0
+		b.life = 0.8
+		b.from = "handler"
+		bullets.append(b)
+		h.fire_cd = 0.55
+		cue("fire")
+
+
+# ── the tick. the port of simulate(). ───────────────────────────────────────────
+
+func tick(dt: float, mv: Vector2, firing: bool, aim: Vector2, recalling := false, mend_held := false) -> void:
+	t += dt
+
+	# ⚠ handled FIRST. the recall is instant or it is not a recall.
+	if recalling:
+		recall()
+	recall_flash = maxf(0.0, recall_flash - dt * 2.2)
+	death_flash = maxf(0.0, death_flash - dt * 0.42)   # slow. it should sit on you.
+
+	# ── player ──
+	player_prev = player_pos
+	player_pos = (player_pos + mv * 2.5 * 60.0 * dt).clamp(Vector2(12, 12), Vector2(Tuning.W - 12, Tuning.H - 12))
+
+	# 🚨 ARE YOU FALLING BACK? inferred, never a button. `p.retreating = false` with no
+	# writer is how COVERING ... the entire emotional engine ... scored zero forever.
+	var near_t = null
+	var near_d := INF
+	for th in threats:
+		if not is_hostile(th):
+			continue
+		var d := player_pos.distance_to(th.pos)
+		if d < near_d:
+			near_d = d
+			near_t = th
+	if near_t != null and mv != Vector2.ZERO and near_d < Tuning.RETREAT_RANGE:
+		var away: Vector2 = (player_pos - near_t.pos) / maxf(near_d, 1.0)
+		player_retreating = mv.dot(away) > Tuning.RETREAT_DOT
+	else:
+		player_retreating = false
+
+	# IND-34j: heat, not ammo. ⚠ holding the trigger must NOT cool the driver.
+	fire_cd = maxf(0.0, fire_cd - dt)
+	overheated = maxf(0.0, overheated - dt)
+	if firing and overheated <= 0.0:
+		if fire_cd <= 0.0:
+			var a := (aim - player_pos).angle()
+			var b := Bullet.new()
+			b.pos = player_pos
+			b.vel = Vector2(cos(a), sin(a)) * 420.0
+			b.life = 1.1
+			b.from = "player"
+			bullets.append(b)
+			fire_cd = Tuning.FIRE_CD
+			heat = minf(1.0, heat + Tuning.HEAT_PER_SHOT)
+			cue("fire")
+			if heat >= 1.0:
+				overheated = Tuning.OVERHEAT_LOCK
+				heat = 1.0
+				cue("overheat")
+				log_line("the driver is too hot to fire.")
+	else:
+		heat = maxf(0.0, heat - dt * (Tuning.HEAT_COOL_LOCKED if overheated > 0.0 else Tuning.HEAT_COOL))
+
+	# ── bullets ──
+	for i in range(bullets.size() - 1, -1, -1):
+		var b2: Bullet = bullets[i]
+		b2.pos += b2.vel * dt
+		b2.life -= dt
+		if b2.life <= 0.0 or b2.pos.x < 0.0 or b2.pos.y < 0.0 or b2.pos.x > Tuning.W or b2.pos.y > Tuning.H:
+			bullets.remove_at(i)
+			continue
+		if b2.from == "threat":
+			# IND-34n: incoming fire hits the player and the companion and nothing else,
+			# so a caster is a threat to dodge rather than a threat to out-position.
+			if b2.pos.distance_to(player_pos) < player_r + 5.0:
+				bullets.remove_at(i)
+				hurt_player(Tuning.caster_damage(Tuning.depth_at(player_pos.x)), 50)
+				continue
+			if mind != null and b2.pos.distance_to(companion_pos) < companion_r + 5.0:
+				companion_hp -= Tuning.caster_damage(Tuning.depth_at(player_pos.x))
+				bullets.remove_at(i)
+				cue("hurt")
+			continue
+		for th2 in threats:
+			if not th2.alive or b2.pos.distance_to(th2.pos) > th2.r + 3.0:
+				continue
+			hurt_threat(th2, 12.0)
+			bullets.remove_at(i)
+			hitstop(90 if not th2.alive else 40)   # game-feel: hitstop before particles
+			cue("hit")
+			break
+
+	# ── threats. they telegraph enormously ... built to be safe around humans. ──
+	for th3 in threats:
+		if not th3.alive:
+			continue
+		# ⚠ IND-34l: the ones that gave up do not react. to anything. skipped before ANY
+		# behaviour, because a stopped machine that flinches has noticed, and the moment
+		# one notices the register collapses into pathos.
+		if th3.kind == "stopped":
+			continue
+		var warden: bool = th3.kind == "warden"
+
+		# IND-34k step 5: it announces itself. politely. it is doing its job.
+		if warden and not th3.announced and th3.pos.distance_to(player_pos) < 620.0:
+			th3.announced = true
+			cue("announce")
+			log_line("UNIT 12. AREA IS BEING CLEARED. PLEASE STAND AWAY." if th3.degree == 2
+				else "UNIT 7. AREA IS BEING CLEARED. PLEASE STAND AWAY.")
+
+		# 🚨 IND-34l degree 2: announced, and cannot follow through. no label, no colour
+		# ... degree is readable from behaviour or it is not readable at all.
+		if warden and th3.degree == 2:
+			th3.wind = 0.0
+			th3.striking = false
+			if th3.pos.distance_to(player_pos) > 780.0 and t > th3.rearm_at:
+				th3.announced = false
+				th3.rearm_at = t + 8.0
+			continue
+
+		# a warden's only surviving instruction is ENGAGE HOSTILES, with no definition
+		# of hostile left. runners ignore the handler ... it has to be good company,
+		# not an escort mission.
+		var tgt := player_pos
+		var tgt_kind := "player"
+		if mind != null and th3.pos.distance_to(companion_pos) < th3.pos.distance_to(tgt):
+			tgt = companion_pos
+			tgt_kind = "companion"
+		if warden and handler != null and handler.alive and th3.pos.distance_to(handler.pos) < th3.pos.distance_to(tgt):
+			tgt = handler.pos
+			tgt_kind = "handler"
+		var d3: float = th3.pos.distance_to(tgt)
+
+		# ⚠ IND-34i: task-runners in a dust storm cannot see you either. weather is
+		# COVER as often as it is a threat.
+		var blind := dust_at(th3.pos)
+		if blind > 0.15 and d3 > 210.0 * (1.0 - blind * 0.7):
+			th3.wind = maxf(0.0, th3.wind - dt * 2.0)
+			th3.striking = false
+			th3.pos += Vector2(cos(th3.seed_v + t * 0.4), sin(th3.seed_v + t * 0.4)) * th3.speed * 0.5 * 60.0 * dt
+			continue
+
+		# IND-34n: the caster keeps its distance and shoots, so the fight has a second
+		# verb. a field of pure melee can only ever be walked away from.
+		if th3.kind == "caster":
+			var HOLD := 300.0
+			th3.fire_cd = maxf(0.0, th3.fire_cd - dt)
+			if d3 > HOLD + 30.0:
+				th3.pos += (tgt - th3.pos) / d3 * th3.speed * 60.0 * dt
+			elif d3 < HOLD - 60.0:
+				th3.pos -= (tgt - th3.pos) / d3 * th3.speed * 60.0 * dt
+			if d3 < HOLD + 90.0:
+				th3.wind = minf(1.0, th3.wind + dt * 1.5)
+			else:
+				th3.wind = maxf(0.0, th3.wind - dt * 2.0)
+			if th3.wind >= 1.0 and th3.fire_cd <= 0.0:
+				th3.wind = 0.0
+				th3.fire_cd = 1.9 + randf() * 0.9
+				var ca: float = (tgt - th3.pos).angle()
+				var cb := Bullet.new()
+				cb.pos = th3.pos
+				# ⚠ SLOW. a shot you cannot sidestep is unavoidable damage in a costume.
+				cb.vel = Vector2(cos(ca), sin(ca)) * 168.0
+				cb.life = 2.6
+				cb.from = "threat"
+				bullets.append(cb)
+				cue("fire")
+			continue
+
+		var reach := 92.0 if warden else 56.0
+		if d3 < reach:
+			th3.wind += dt
+			th3.striking = th3.wind > (0.85 if warden else 0.55)
+		else:
+			th3.wind = maxf(0.0, th3.wind - dt * 2.0)
+			th3.striking = false
+			th3.pos += (tgt - th3.pos) / d3 * th3.speed * 60.0 * dt
+		if th3.striking and th3.wind > (1.5 if warden else 0.95):
+			th3.wind = 0.0
+			var hit_r := 96.0 if warden else 58.0
+			if th3.pos.distance_to(tgt) < hit_r:
+				# ⚠ the warden keeps its teeth. the fix is a gentler OPENING, never a
+				# nerfed exception.
+				var dmg := Tuning.WARDEN_DMG if warden else Tuning.runner_damage(Tuning.depth_at(player_pos.x))
+				if tgt_kind == "player":
+					hurt_player(dmg, 120 if warden else 70)
+				elif tgt_kind == "handler":
+					kill_handler()
+				elif mind != null:
+					companion_hp -= 34.0 if warden else dmg
+					cue("hurt")
+
+		# 🚨 the permanent rule, enforced regardless of what it was aiming at.
+		if warden and handler != null and handler.alive and th3.pos.distance_to(handler.pos) < Tuning.WARDEN_ONESHOT_RADIUS:
+			kill_handler()
+
+		# ⚠ death is handled at hurt_threat, the single damage door. no check here.
+
+	threats = threats.filter(func(th4): return th4.alive or th4.pos.distance_to(player_pos) < 900.0)
+
+	# ⚠ IND-34n: the CROWD is what kills, and a crowd is not a pattern.
+	spawn_timer -= dt
+	var depth := Tuning.depth_at(player_pos.x)
+	var cap2 := roundi(3.0 + depth * 3.0)
+	var hostile_n := 0
+	for th5 in threats:
+		if th5.alive and th5.kind != "stopped":
+			hostile_n += 1
+	if spawn_timer <= 0.0 and hostile_n < cap2:
+		spawn_threat()
+		spawn_timer = (4.4 - depth * 1.4) + randf() * 3.0
+
+	# ── the player picks up what they walk over ──
+	for i2 in range(salvage.size() - 1, -1, -1):
+		if salvage[i2].pos.distance_to(player_pos) < 18.0:
+			var s2: SalvageItem = salvage[i2]
+			if s2.frag != "":
+				var f := Fragments.make(s2.frag, s2.worn)
+				pack.append(f)
+				log_line("recovered: %s" % f.name)
+			salvage.remove_at(i2)
+			cue("pickup")
+
+	if has_chassis and not chassis_taken and chassis_pos.distance_to(player_pos) < 26.0:
+		take_chassis()
+
+	# IND-34c: going back for it. no prompt, no marker ... you walk there and it is there.
+	if waiting_mind != null and waiting_pos.distance_to(player_pos) < 24.0:
+		retrieve()
+
+	deepest = maxf(deepest, player_pos.x)
+
+	# ── IND-34k, the beat. two permanent rules, introduced once. ──
+	if not handler_met and chassis_taken and t > Tuning.HANDLER_ARRIVES:
+		spawn_handler()
+	if handler != null and handler.alive:
+		act_handler(dt)
+	# 🚨 going deep is not sufficient. the dog has to have BEEN there (HANDLER_GRACE ...
+	# the one number a playtest owns, not a measurement).
+	if not warden_spawned and handler != null and handler.alive and player_pos.x > Tuning.DEEP_X \
+			and t - handler_met_at > Tuning.HANDLER_GRACE:
+		spawn_warden()
+
+	do_mend(dt, mend_held)
+
+	# ── IND-34i: the weather crosses. it arrives and it leaves ... never a wall. ──
+	if weather != null:
+		weather.age += dt
+		weather.pos += weather.vel * dt
+		weather.strength = minf(1.0, minf(weather.age / 9.0, (weather.life - weather.age) / 12.0))
+		if weather.age > weather.life or weather.pos.x < -700.0 or weather.pos.x > Tuning.W + 700.0:
+			weather = null
+			weather_timer = 70.0 + randf() * 60.0
+			log_line("the air clears.")
+	else:
+		weather_timer -= dt
+		if weather_timer <= 0.0:
+			spawn_weather()
+
+	# ── the companion ──
+	if mind != null:
+		mind.decide(self, dt)
+		act_companion(dt)
+		# 🚨 THE GATE'S OTHER HALF: a player cannot react to something they never notice.
+		# it speaks ONCE crossing into real trouble, and not again until made whole.
+		var frac := companion_hp / companion_max_hp
+		if frac < Tuning.HURT_THRESHOLD and not mind.hurt_announced:
+			mind.hurt_announced = true
+			log_line("%s is hurt." % companion_name())
+		if frac > Tuning.HURT_RESET:
+			mind.hurt_announced = false
+		if companion_hp <= 0.0:
+			companion_hp = 1.0
+			mind.hurt_announced = true
+			log_line("%s is badly damaged." % companion_name())
+		# ⚠ you earn it back: ~3 minutes of ordinary company, near it, not fleeing.
+		if mind.bond < 1.0:
+			var calm: bool = mind.behaviour != CompanionMind.B.FLEE and companion_pos.distance_to(player_pos) < 120.0
+			if calm:
+				var before: float = mind.bond
+				mind.bond = minf(1.0, mind.bond + dt * Tuning.BOND_RECOVER)
+				if before < 1.0 and mind.bond >= 1.0:
+					log_line("%s stays close again." % companion_name())
+				mind.recompute()
+
+	if player_hp <= 0.0:
+		die()

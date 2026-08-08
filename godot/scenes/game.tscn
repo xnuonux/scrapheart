@@ -1,0 +1,38 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scenes/game.gd" id="1_game"]
+[ext_resource type="Script" path="res://render/game_camera.gd" id="2_cam"]
+[ext_resource type="Shader" path="res://render/vignette.gdshader" id="3_vig"]
+[ext_resource type="Script" path="res://scenes/hud.gd" id="4_hud"]
+
+[sub_resource type="ShaderMaterial" id="vig_mat"]
+shader = ExtResource("3_vig")
+shader_parameter/dust = 0.0
+
+[node name="Game" type="Node2D"]
+script = ExtResource("1_game")
+
+[node name="Camera" type="Camera2D" parent="."]
+script = ExtResource("2_cam")
+
+[node name="Haze" type="CanvasLayer" parent="."]
+
+[node name="Vignette" type="ColorRect" parent="Haze"]
+material = SubResource("vig_mat")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="HUD" type="CanvasLayer" parent="."]
+layer = 2
+
+[node name="Overlay" type="Control" parent="HUD"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("4_hud")
