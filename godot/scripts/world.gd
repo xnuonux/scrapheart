@@ -147,8 +147,9 @@ var logs: Array = []                    ## { text, t }
 var spawn_timer := 3.0
 var anchor := Vector2(Tuning.W / 2.0, Tuning.H / 2.0)
 
-## receipts the scene consumes each frame: sound cues + hitstop seconds
+## receipts the scene consumes each frame: sound cues + positioned vfx + hitstop
 var sounds: Array = []
+var vfx: Array = []                     ## { kind, pos, ... } drained by the scene
 var hitstop_s := 0.0
 
 var spawn_rng: Lcg = Lcg.from_string("halt-spawns")
@@ -193,6 +194,12 @@ func log_line(text: String) -> void:
 
 func cue(name: String) -> void:
 	sounds.append(name)
+
+
+func fx(kind: String, pos: Vector2, extra := {}) -> void:
+	var e := { "kind": kind, "pos": pos }
+	e.merge(extra)
+	vfx.append(e)
 
 
 func hitstop(ms: float) -> void:
@@ -433,6 +440,7 @@ func recall() -> void:
 	recall_flash = 1.0
 	recall_count += 1
 	cue("recall")
+	fx("recall", anchor)
 	if carried > 0:
 		log_line("you left. %d kept%s." % [carried, (", %d still out there" % left) if left > 0 else ""])
 	else:
@@ -526,6 +534,7 @@ func hurt_player(dmg: float, stop_ms: float) -> void:
 	player_hp -= dmg
 	last_hurt = t
 	cue("hurt")
+	fx("playerhurt", player_pos)
 	hitstop(stop_ms)
 
 
@@ -541,6 +550,7 @@ func hurt_threat(th, dmg: float) -> void:
 		return
 	th.alive = false
 	cue("destroy")
+	fx("destroy", th.pos, { "r": th.r, "warden": th.kind == "warden" })
 	if th.kind == "stopped":
 		# IND-34l: the intact ones are BETTER salvage. the game never comments.
 		var a := SalvageItem.new()
@@ -795,6 +805,7 @@ func tick(dt: float, mv: Vector2, firing: bool, aim: Vector2, recalling := false
 			fire_cd = Tuning.FIRE_CD
 			heat = minf(1.0, heat + Tuning.HEAT_PER_SHOT)
 			cue("fire")
+			fx("muzzle", player_pos, { "dir": a })
 			if heat >= 1.0:
 				overheated = Tuning.OVERHEAT_LOCK
 				heat = 1.0
@@ -830,6 +841,7 @@ func tick(dt: float, mv: Vector2, firing: bool, aim: Vector2, recalling := false
 			bullets.remove_at(i)
 			hitstop(90 if not th2.alive else 40)   # game-feel: hitstop before particles
 			cue("hit")
+			fx("hit", b2.pos)
 			break
 
 	# ── threats. they telegraph enormously ... built to be safe around humans. ──

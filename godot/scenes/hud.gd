@@ -9,6 +9,8 @@ extends Control
 var game = null   # game.gd Node2D; untyped so the cross-script surface stays duck-typed
 var pack_open := false
 var name_edit: LineEdit
+## JetBrains Mono (OFL, assets/fonts) ... the web build's ui-monospace, made deliberate.
+var mono: FontFile = preload("res://assets/fonts/JetBrainsMono-Regular.ttf")
 
 
 func _ready() -> void:
@@ -21,6 +23,7 @@ func _ready() -> void:
 	name_edit.flat = true
 	name_edit.position = Vector2(0, 0)   # placed when the panel opens
 	name_edit.size = Vector2(150, 22)
+	name_edit.add_theme_font_override("font", mono)
 	name_edit.add_theme_color_override("font_color", Palette.COMP)
 	name_edit.add_theme_color_override("font_placeholder_color", Palette.at(Palette.COMP_DIM, 0.7))
 	name_edit.text_submitted.connect(_on_name_submitted)
@@ -100,7 +103,7 @@ func _draw() -> void:
 	if game == null:
 		return
 	var w: GameWorld = game.world
-	var f := ThemeDB.fallback_font
+	var f: Font = mono
 
 	# ── top left: the companion, read at a glance ──
 	if w.mind != null:

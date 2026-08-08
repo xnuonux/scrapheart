@@ -11,6 +11,9 @@ var world: GameWorld
 var cam: GameCamera
 var vignette: ColorRect
 var hud   # hud.gd Control; untyped so the cross-script surface stays duck-typed
+var lights: LightRig
+var fx_rig: VfxRig
+var sfx_rig: SfxRig
 
 var last_player_hp := 0.0
 
@@ -26,6 +29,9 @@ func _ready() -> void:
 	vignette = $Haze/Vignette
 	hud = $HUD/Overlay
 	hud.game = self
+	lights = $Lights
+	fx_rig = $Vfx
+	sfx_rig = $Sfx
 	cam.position = world.player_pos
 	cam.target = world.player_pos
 
@@ -63,13 +69,22 @@ func _physics_process(dt: float) -> void:
 			cam.add_trauma(0.45)
 		last_player_hp = world.player_hp
 
-		# sound cues drain every frame. the procedural sfx port is its own pass; the
-		# queue exists now so nothing accumulates unbounded.
-		world.sounds.clear()
+		# positioned vfx drain into the rigs
+		for e in world.vfx:
+			if e.kind == "muzzle":
+				lights.flash_muzzle()
+			else:
+				fx_rig.spend(e.kind, e.pos)
+		world.vfx.clear()
+		sfx_rig.drain(world.sounds)
 
 	cam.target = world.player_pos
+	lights.frame_update(world, dt)
+	fx_rig.follow_camera(cam.position)
 	var dust := world.dust_at(world.player_pos)
-	(vignette.material as ShaderMaterial).set_shader_parameter("dust", dust)
+	var mat := vignette.material as ShaderMaterial
+	mat.set_shader_parameter("dust", dust)
+	mat.set_shader_parameter("depth", Tuning.depth_at(world.player_pos.x))
 	queue_redraw()
 	hud.queue_redraw()
 
@@ -77,28 +92,21 @@ func _physics_process(dt: float) -> void:
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("pack"):
 		hud.toggle_pack()
+	if event is InputEventKey and event.pressed and event.keycode == KEY_M:
+		sfx_rig.muted = not sfx_rig.muted
 
 
 func _draw() -> void:
 	var w := world
 	var t := Time.get_ticks_msec() / 1000.0
 
-	# ground: flat bands, a faint grid. structure, not decoration.
-	draw_rect(Rect2(0, 0, Tuning.W, Tuning.H), Palette.GROUND0)
-	for gx in range(0, int(Tuning.W), 160):
-		for gy in range(0, int(Tuning.H), 160):
-			if ((gx / 160) + (gy / 160)) % 2 == 0:
-				draw_rect(Rect2(gx, gy, 160, 160), Palette.at(Palette.GROUND1, 0.5))
-	for gx in range(0, int(Tuning.W) + 1, 80):
-		draw_line(Vector2(gx, 0), Vector2(gx, Tuning.H), Palette.at(Palette.STRUCTURE, 0.30), 1.0)
-	for gy in range(0, int(Tuning.H) + 1, 80):
-		draw_line(Vector2(0, gy), Vector2(Tuning.W, gy), Palette.at(Palette.STRUCTURE, 0.30), 1.0)
-
-	# the field of stopped machines (culled to the view)
+	# the ground lives in its own node now (the shader floor). this draw starts at the
+	# things standing on it ... shadows first, so everything is planted, not floating.
 	var view_r := 900.0
 	for wk in w.wrecks:
 		if wk.pos.distance_to(w.player_pos) > view_r:
 			continue
+		_shadow(wk.pos, wk.s * 0.9)
 		Sprites.wreck(self, wk.pos, wk.s, wk.seed_v, false)
 
 	# things worth nothing. only ever a shape and a light.
@@ -146,6 +154,7 @@ func _draw() -> void:
 	for th in w.threats:
 		if not th.alive:
 			continue
+		_shadow(th.pos, th.r * (1.8 if th.kind == "warden" else 1.2))
 		if th.kind == "stopped":
 			# IND-34l: drawn as a wreck ... the only tell is one lit light.
 			Sprites.wreck(self, th.pos, th.r * 1.5, th.seed_v, true)
@@ -164,6 +173,7 @@ func _draw() -> void:
 			draw_rect(Rect2(th.pos.x - bw / 2, th.pos.y - th.r - 12, bw * maxf(0.0, th.hp / th.max_hp), 2), Palette.HARM)
 
 	if w.handler != null and w.handler.alive:
+		_shadow(w.handler.pos + Vector2(0, 2), 8.0)
 		Sprites.handler(self, w.handler.pos, w.handler.bob)
 
 	# THE ANCHOR. warm, so it reads as the one safe thing without a word of tutorial.
@@ -192,10 +202,12 @@ func _draw() -> void:
 		draw_rect(Rect2(w.waiting_pos.x - 1, w.waiting_pos.y - 2, 2, 2), Palette.at(Palette.GLOW, 0.4 + pulse))
 
 	if w.mind != null:
+		_shadow(w.companion_pos, 7.0)
 		Sprites.companion(self, w.companion_pos, w.mind.live_fragments().size(), w.exposure,
 			1.0 - w.companion_hp / w.companion_max_hp, w.mind.empty_sockets(),
 			w.mending > 0.0, w.mind.facing, w.mind.marked != null)
 
+	_shadow(w.player_pos, 8.0)
 	Sprites.player(self, w.player_pos, w.t - w.last_hurt < 0.12, w.player_retreating)
 
 	# 🚨 THE DUST. inside the camera transform, so you watch it arrive from across the
@@ -214,6 +226,14 @@ func _draw() -> void:
 
 	# the ground ENDS rather than being CUT
 	_edge_fade()
+
+
+## a soft dark pool under a thing, so it stands ON the ground instead of floating in
+## front of it. the single cheapest de-flattening move in 2D.
+func _shadow(pos: Vector2, r: float) -> void:
+	var tex := Glows.sprite(Palette.VOID, 32.0, 0.25, 0.55, 0.5)
+	draw_texture_rect(tex, Rect2(pos.x - r * 1.1, pos.y + r * 0.15, r * 2.2, r * 1.05),
+		false, Color(1, 1, 1, 0.52))
 
 
 func _edge_fade() -> void:

@@ -15,7 +15,7 @@ config_version=5
 
 config/name="SCRAPHEART"
 config/description="one zone, one companion. the gate is whether people name it."
-run/main_scene="res://scenes/main.tscn"
+run/main_scene="res://scenes/game.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
 
