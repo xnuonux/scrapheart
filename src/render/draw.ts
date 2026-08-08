@@ -207,7 +207,9 @@ export function render(cx: CanvasRenderingContext2D, w: World, alpha: number, vw
     if (t.hp < t.maxHp) {
       const bw = t.kind === 'warden' ? 44 : 22
       cx.fillStyle = hex(P.harmDim, 0.9); cx.fillRect(t.x - bw / 2, t.y - t.r - 12, bw, 2)
-      cx.fillStyle = P.harm; cx.fillRect(t.x - bw / 2, t.y - t.r - 12, bw * (t.hp / t.maxHp), 2)
+      // ⚠ clamped: a negative hp drew the bar BACKWARDS, a red line reaching across the
+      // field. the damage door now kills at zero, and the renderer refuses to lie anyway.
+      cx.fillStyle = P.harm; cx.fillRect(t.x - bw / 2, t.y - t.r - 12, bw * Math.max(0, t.hp / t.maxHp), 2)
     }
   }
 

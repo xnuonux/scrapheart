@@ -153,6 +153,20 @@ Everything below exists only to make that gate answerable.
       loyalty **0.70 → 0.15**.
 - [x] **The single damage door.** All three player-damage paths route through `hurtPlayer()`, so
       the interposition cannot be true on one and silently absent on another.
+- [x] 🚨 **THE IMMORTAL MACHINE CLASS** (found by dom, first session on the beast PC, 2026-08-08).
+      Threat damage was subtracted in three places while each kind's DEATH CHECK lived inside its
+      own behaviour branch, so any `continue` above the check made a machine immortal. The
+      degree-2 warden exited at its own early-out before its check could ever run: the handler
+      parked in its lap grinding its hp **thousands below zero** while the health bar drew
+      **backwards across the field** (dom's screenshot shows a red line ~300px long). Dust-blinded
+      runners `continue`d past theirs too and wore negative bars until the storm passed. ⚠ **The
+      fix is `hurtThreat()`, the twin of `hurtPlayer()`** ... every source (player bullets, the
+      handler's gun, companion melee) routes through one door and death happens there, whatever
+      branch the behaviour was in. The scattered checks are deleted, the renderer clamps the bar
+      so it can never lie, and the broken warden is killable (340hp of grinding, drops selfpres):
+      "forever" describes its behaviour, not its armour. `_probe_immortal` 5/5, and the
+      neighbours re-ran green: loss 9/9+both-ways, death 12/12, calib 5/5, gate's hurt-leg 3/3
+      (its flee leg is emergent and sits at 2/3, as it did before the change).
 
 ## found by playtesting, fixed
 
@@ -299,6 +313,28 @@ has to be told about them, that is itself a finding.
 🚨 **Do not tell a tester they can name it.** The name field is in the pack panel and it is
 deliberately unlabelled. **The moment you mention it, that player's data is spent** ... they can
 still be watched for everything else, but they no longer count toward the seven.
+
+## found by playtesting, open (dom's first session, 2026-08-08 ... design calls, his to rule)
+
+⚠ Dom knows the name field exists, so his data is spent for the gate's seven. Everything else
+he reported is real first-contact data from a player who was given no instructions, and it
+landed almost exactly where this file predicted it would:
+
+- **The install loop went entirely undiscovered.** He collected ~20 fragments, watched the
+  pickup lines appear and vanish top-right, and never learned they were FOR anything ... never
+  opened the pack. His words: "idk what to do with them." 🚨 The assembly of the companion is
+  the emotional core of the game, and a stranger did not find it in a full session. The pack
+  hint exists on the bottom line; it is not landing. (Predicted: "if a watcher has to be told
+  about [Q]/[E], that is itself a finding." It is now a measured one, and it extends to [I].)
+- **Salvage density read as noise**: "too many gold dots, too much probably." The findability
+  fix that made the opening legible may have overshot into clutter.
+- **The warden's announcement read as a kill-confirmation toast.** He killed a crowd, then the
+  re-arm line fired ("AREA IS BEING CLEARED") and he read it as "area cleared: you win",
+  repeatedly. The politeness landed as UI, not as a machine speaking.
+- **Controls half-discovered**: WASD + fire + Q learned in play, E never learned, I never found.
+- **He found the degree-2 warden unprompted** (deep corner, no reason to be there) and read the
+  fight as "a boss that never dies" ... which, at the time, it literally was (see the immortal
+  machine entry above). Worth re-asking once the bug is out whether the broken warden READS.
 
 ## next, in order
 

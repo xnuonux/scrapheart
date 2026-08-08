@@ -777,8 +777,8 @@ function act(c: Companion, w: World, dt: number) {
   const cap = Math.max(0.35, c.body.battery)
   c.charge = clamp(c.charge + (busy ? -dt * 0.10 / cap : dt * 0.16 * cap), 0, 1)
 
-  if (c.behaviour === 'engage' && th && dist(c, th) < 30) th.hp -= 20 * dt
-  if (c.behaviour === 'cover' && th && dist(c, th) < 44) th.hp -= 9 * dt
+  if (c.behaviour === 'engage' && th && dist(c, th) < 30) hurtThreat(w, th, 20 * dt)
+  if (c.behaviour === 'cover' && th && dist(c, th) < 44) hurtThreat(w, th, 9 * dt)
 
   if (c.behaviour === 'repair' && dist(c, p) < 30 && c.repairCd <= 0 && p.hp < p.maxHp) {
     p.hp = Math.min(p.maxHp, p.hp + 15); c.repairCd = 2.4; sfx.repair()
@@ -862,6 +862,48 @@ function hurtPlayer(w: World, dmg: number, stop: number) {
   p.lastHurt = w.t
   sfx.hurt()
   hitstop(stop)
+}
+
+/**
+ * 🚨 The single damage door for THREATS ... the twin of `hurtPlayer` above, built for
+ * the same reason, a session later.
+ *
+ * Damage used to be subtracted in three places while each kind's DEATH CHECK lived
+ * inside its own behaviour branch, so any `continue` above the check made a machine
+ * immortal. The degree-2 warden exited at its own early-out before its check could
+ * ever run: the handler sat in its lap grinding its hp thousands below zero while
+ * the health bar drew backwards across the screen. Dust-blinded runners `continue`d
+ * past theirs too, and wore negative bars until the storm passed.
+ *
+ * ⚠ Found by dom in his first session on the beast PC. Every path that costs a
+ * threat hp routes through here, and death happens HERE ... whoever caused it,
+ * whatever branch the behaviour was in.
+ */
+function hurtThreat(w: World, t: Threat, dmg: number) {
+  if (!t.alive) return
+  t.hp -= dmg
+  if (t.hp > 0) return
+  t.alive = false
+  sfx.destroy()
+  if (t.kind === 'stopped') {
+    // IND-34l: every one of them is salvage, and the intact ones are BETTER. The most
+    // upsetting thing in a room is usually the most profitable, and the game never
+    // comments.
+    w.salvage.push({ x: t.x - 9, y: t.y, frag: pickFrag() })
+    w.salvage.push({ x: t.x + 9, y: t.y + 6, frag: pickFrag() })
+  } else if (t.kind === 'warden') {
+    // either degree. "forever" describes its behaviour, not its armour ... a machine
+    // that takes damage but cannot die is a lie the health bar eventually tells.
+    w.salvage.push({ x: t.x, y: t.y, frag: 'selfpres' })
+    hitstop(220)
+  } else if (t.kind === 'caster') {
+    w.salvage.push({ x: t.x, y: t.y, frag: Math.random() < 0.30 ? pickFrag() : null })
+  } else {
+    // ⚠ IND-34i: better salvage under bad weather. The reason to go in anyway, and
+    // the whole risk economy in one line.
+    const odds = 0.22 + w.dustAt(t) * 0.34
+    w.salvage.push({ x: t.x, y: t.y, frag: Math.random() < odds ? pickFrag() : null })
+  }
 }
 
 function mend(w: World, dt: number, holding: boolean) {
@@ -982,22 +1024,10 @@ export function simulate(
 
     for (const t of w.threats) {
       if (!t.alive || Math.hypot(b.x - t.x, b.y - t.y) > t.r + 3) continue
-      t.hp -= 12
+      hurtThreat(w, t, 12)
       w.bullets.splice(i, 1)
-      hitstop(t.hp <= 0 ? 90 : 40)      // game-feel: hitstop before particles
+      hitstop(!t.alive ? 90 : 40)       // game-feel: hitstop before particles
       sfx.hit()
-
-      // 🚨 IND-34l: every one of them is salvage, and the game will never stop you.
-      // The ones that gave up INTACT are BETTER salvage ... whole, undamaged, not torn
-      // out of anything still running. So the most upsetting thing in any given room is
-      // usually also the most profitable. ⚠ The game does not comment. No morality
-      // anywhere, no reward for kindness, no penalty for stripping.
-      if (t.kind === 'stopped' && t.hp <= 0) {
-        t.alive = false
-        w.salvage.push({ x: t.x - 9, y: t.y, frag: pickFrag() })
-        w.salvage.push({ x: t.x + 9, y: t.y + 6, frag: pickFrag() })
-        sfx.destroy()
-      }
       break
     }
   }
@@ -1082,11 +1112,6 @@ export function simulate(
                          life: 2.6, from: 'threat' })
         sfx.fire()
       }
-      if (t.hp <= 0) {
-        t.alive = false
-        w.salvage.push({ x: t.x, y: t.y, frag: Math.random() < 0.30 ? pickFrag() : null })
-        sfx.destroy()
-      }
       continue
     }
 
@@ -1112,17 +1137,9 @@ export function simulate(
     // a handler that is anywhere near a swinging warden dies. always. everywhere.
     if (warden && w.handler?.alive && dist(t, w.handler) < 78) w.killHandler()
 
-    if (t.hp <= 0) {
-      t.alive = false
-      // ⚠ IND-34i: "better salvage under bad weather. The reason to go in anyway, and
-      // the whole risk economy in one line."
-      const odds = 0.22 + w.dustAt(t) * 0.34
-      w.salvage.push({ x: t.x, y: t.y, frag: warden ? 'selfpres' : Math.random() < odds ? pickFrag() : null })
-      sfx.destroy()
-      // ⚠ and when it stops, nothing is said. no text, no reward screen, no
-      // acknowledgement of what the player just carried into that room.
-      if (warden) hitstop(220)
-    }
+    // ⚠ death is handled at `hurtThreat`, the single damage door. no check here means
+    // no branch above can strand a dead-but-alive machine ... which is exactly what
+    // the degree-2 warden's `continue` and the dust-blind `continue` both did.
   }
   w.threats = w.threats.filter(t => t.alive || dist(t, p) < 900)
 
