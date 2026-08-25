@@ -41,6 +41,7 @@ class Threat:
 	var stolen: Fragments.Frag = null   ## scavengers: the fragment they took, RUNNING in them
 	var pulse_at := 0.0        ## herders: the herding pulse timer
 	var home := Vector2.ZERO   ## wardens deg 3: the centre of their perimeter
+	var touch_cd := 0.0        ## 🚨 contact damage is RHYTHMED, never a per-tick tax
 
 class SalvageItem:
 	var pos: Vector2
@@ -1174,7 +1175,9 @@ func tick(dt: float, mv: Vector2, firing: bool, aim: Vector2, recalling := false
 				th3.heading = th3.heading.rotated((randf() - 0.5) * 2.6)
 			th3.pos += th3.heading * th3.speed * 60.0 * dt
 			th3.pos = th3.pos.clamp(Vector2(10, 10), Vector2(Tuning.W - 10, Tuning.H - 10))
-			if th3.pos.distance_to(player_pos) < th3.r + player_r:
+			th3.touch_cd = maxf(0.0, th3.touch_cd - dt)
+			if th3.touch_cd <= 0.0 and th3.pos.distance_to(player_pos) < th3.r + player_r:
+				th3.touch_cd = 0.7
 				hurt_player(Tuning.LOOP_DMG, 50)
 			continue
 
@@ -1226,7 +1229,8 @@ func tick(dt: float, mv: Vector2, firing: bool, aim: Vector2, recalling := false
 						th3.alive = false
 						continue
 			else:
-				# no exposed socket: it fights like a cautious runner
+				# no exposed socket: it fights like a cautious runner, on the runner's
+				# telegraph rhythm (wind-up, strike, recover ... never a tax)
 				var to_p2: Vector2 = player_pos - th3.pos
 				var dd2 := to_p2.length()
 				if dd2 > 60.0:
@@ -1258,23 +1262,29 @@ func tick(dt: float, mv: Vector2, firing: bool, aim: Vector2, recalling := false
 			continue
 
 		if th3.kind == "pest":
-			# everything is pest. small, fast, many, and they swarm.
+			# everything is pest. small, fast, many, and they swarm. ⚠ the swarm
+			# bites on a rhythm, never a per-tick tax ... 34c's law holds for
+			# contact damage too: nothing touches you without a beat you can read.
 			var to_p3: Vector2 = player_pos - th3.pos
 			var dd3 := to_p3.length()
 			if dd3 > 2.0:
 				th3.pos += to_p3 / dd3 * th3.speed * 60.0 * dt
-			if dd3 < th3.r + player_r + 2.0 and t > th3.pulse_at:
-				th3.pulse_at = t + 0.8
+			th3.touch_cd = maxf(0.0, th3.touch_cd - dt)
+			if dd3 < th3.r + player_r + 2.0 and th3.touch_cd <= 0.0:
+				th3.touch_cd = 0.9
 				hurt_player(Tuning.PEST_DMG, 40)
 			continue
 
 		if th3.kind == "dray":
-			# it walks its line. hazards by mass, not malice: contact hurts and SHOVES.
+			# it walks its line. hazards by mass, not malice: contact hurts and
+			# SHOVES ... once, with the mass of the thing, not a grinding tax.
 			th3.pos.x += th3.speed * 60.0 * dt
 			if th3.pos.x > Tuning.W + 80.0:
 				th3.alive = false
 				continue
-			if th3.pos.distance_to(player_pos) < th3.r + player_r:
+			th3.touch_cd = maxf(0.0, th3.touch_cd - dt)
+			if th3.touch_cd <= 0.0 and th3.pos.distance_to(player_pos) < th3.r + player_r:
+				th3.touch_cd = 1.2
 				hurt_player(Tuning.DRAY_DMG, 80)
 				var shove: Vector2 = (player_pos - th3.pos).normalized() * Tuning.DRAY_KNOCK * 0.2
 				player_pos += shove
