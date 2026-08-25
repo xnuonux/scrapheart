@@ -241,6 +241,50 @@ func _init() -> void:
 	check("the door opens to a real build", w7.ascended)
 	check("the last line is the last line", w7.logs.size() > 0 and w7.logs[0].text.begins_with("I'll be here"))
 
+	# ── 9 · the degrees and the buried (34l #2 / 34i §2) ──
+	print("  ... [9] waiting dog + buried")
+	var w8 := GameWorld.new()
+	# the waiting dog: it is found by proximity, stripped without resistance, and
+	# what it gives is a WHOLE heart
+	check("[pre] the waiting dog exists", not w8.waiting_dog_taken)
+	w8.player_pos = w8.waiting_dog_pos + Vector2(5, 0)
+	w8.tick(dt, Vector2.ZERO, false, Vector2.ZERO)
+	check("the waiting dog is found by walking there", w8.waiting_dog_found and w8.waiting_dog_taken)
+	var heart_found := false
+	for s in w8.salvage:
+		if s.frag == "heart" and s.worn >= 1.0:
+			heart_found = true
+	check("what it leaves is a WHOLE heart", heart_found)
+	# buried: a curious companion digs it up; the dig needs seconds and stillness
+	var w9 := GameWorld.new()
+	w9.player_pos = w9.chassis_pos + Vector2(10, 0)
+	w9.tick(dt, Vector2.ZERO, false, Vector2.ZERO)
+	w9.mind.install(Fragments.make("inquiry"), 1, w9.t)   # curiosity 0.15 + 0.60
+	w9.mind.recompute()
+	check("[pre] curious enough to dig", w9.mind.curiosity >= Tuning.BURIED_CURIOSITY)
+	var b0: Dictionary = w9.buried[0]
+	var dug := false
+	for i in int(Tuning.BURIED_DIG * 60.0) + 120:
+		w9.player_pos = b0.pos + Vector2(30, 0)   # near, watching; it does the work
+		w9.mind.behaviour = CompanionMind.B.INVESTIGATE
+		w9.companion_pos = b0.pos
+		w9.tick(dt, Vector2.ZERO, false, Vector2.ZERO)
+		if b0.done:
+			dug = true
+			break
+	check("a curious companion digs up what is buried", dug)
+	# ... and a DULL one (no inquiry) never does
+	var w10 := GameWorld.new()
+	w10.player_pos = w10.chassis_pos + Vector2(10, 0)
+	w10.tick(dt, Vector2.ZERO, false, Vector2.ZERO)
+	check("[pre] the bare chassis is dull", w10.mind.curiosity < Tuning.BURIED_CURIOSITY)
+	var b1: Dictionary = w10.buried[0]
+	for i in int(Tuning.BURIED_DIG * 60.0) + 60:
+		w10.player_pos = b1.pos + Vector2(30, 0)
+		w10.companion_pos = b1.pos
+		w10.tick(dt, Vector2.ZERO, false, Vector2.ZERO)
+	check("a dull companion walks past everything buried", not b1.done)
+
 	print("")
 	if fails == 0:
 		print("world sim: clean  the ported world holds every claim.")

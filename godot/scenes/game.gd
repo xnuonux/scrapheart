@@ -230,6 +230,31 @@ func _draw() -> void:
 		draw_string(ThemeDB.fallback_font, w.commissary_pos + Vector2(18, -8), "scrip %d" % w.scrip,
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Palette.at(Palette.SALVAGE, 0.7))
 
+	# the handler by degree 2 (34l): it will not leave. drawn only once found.
+	# ⚠ it faces the door. east. always. that is the whole story and it is one pixel.
+	if w.waiting_dog_found and not w.waiting_dog_taken:
+		_shadow(w.waiting_dog_pos + Vector2(0, 2), 7.0)
+		var bob2 := sin(t * 2.0) * 0.4   # it breathes. it is on. it is not going anywhere.
+		draw_rect(Rect2(w.waiting_dog_pos.x - 6, w.waiting_dog_pos.y - 3 + bob2, 12, 6),
+			Palette.LAMP.lerp(Palette.MACHINE, 0.55))
+		draw_rect(Rect2(w.waiting_dog_pos.x + 4, w.waiting_dog_pos.y - 6 + bob2, 5, 5),
+			Palette.LAMP.lerp(Palette.MACHINE, 0.55))
+		draw_rect(Rect2(w.waiting_dog_pos.x + 6, w.waiting_dog_pos.y - 5 + bob2, 2, 2),
+			Palette.at(Palette.LAMP, 0.9))
+
+	# what is buried (34i §2): no marker. the only tell is the ground itself ...
+	# a faint seam in the floor where something was put down long ago, and your
+	# companion's dig ring while it works. a dull machine shows you nothing.
+	for b in w.buried:
+		if b.done:
+			continue
+		if w.player_pos.distance_to(b.pos) < 260.0:
+			draw_rect(Rect2(b.pos.x - 5, b.pos.y - 3, 10, 6), Palette.at(Palette.GROUND2, 0.9))
+			draw_rect(Rect2(b.pos.x - 5, b.pos.y - 3, 10, 1), Palette.at(Palette.EDGE, 0.35))
+		if b.dig > 0.0:
+			var dp := clampf(b.dig / Tuning.BURIED_DIG, 0.0, 1.0)
+			draw_arc(w.companion_pos, 14.0, -PI / 2.0, -PI / 2.0 + dp * TAU, 24, Palette.at(Palette.COMP, 0.7), 1.5)
+
 	# 🚨 THE DOOR (34r): the landmark's threshold, drawn as a standing opening in a
 	# hull wall. no marker, no prompt, no label. it is passable when it is passable.
 	draw_rect(Rect2(w.door_pos.x - 16, w.door_pos.y - 30, 32, 60), Palette.at(Palette.VOID, 0.9))

@@ -188,3 +188,13 @@ const FOREMAN_MANIFEST: int = 3
 ## the door (34r). it is passable the way things become passable: when you have
 ## the parts. it never asks. it is not a menu option. it is a door.
 const DOOR_FRAGS: int = 3
+## the handler by degree (34l): degree 2 "will not leave" ... it is waiting for
+## someone. rare, unmarked, placed where nobody has a reason to be. you can strip
+## it for parts; it will not resist; it will still be facing the door.
+const WAITING_HANDLER_POS := Vector2(1500.0, 180.0)
+## what is buried (34i §2): found by your companion, and only if it is built to
+## care. a curious machine stops, and looks, and you learn to read that. a
+## companion with no curiosity walks past everything buried in the game, forever.
+const BURIED_N: int = 7
+const BURIED_DIG: float = 2.6             ## seconds of standing still while it digs
+const BURIED_CURIOSITY: float = 0.30      ## the disposition the dig asks for

@@ -202,6 +202,19 @@ var scrip := 0                          ## it calls the salvage you feed it "scr
 var door_pos := Vector2(Tuning.W - 60.0, 600.0)
 var ascended := false
 
+## the handler by degree (34l #2): it will not leave. it is waiting for someone.
+## you cannot call it, cannot lead it, cannot pick it up. you can strip it for
+## parts; it will not resist; it will still be facing the door.
+var waiting_dog_pos := Tuning.WAITING_HANDLER_POS
+var waiting_dog_taken := false
+var waiting_dog_found := false
+
+## what is buried (34i §2): pre-Scatter salvage, WHOLE, under the field. no marker,
+## no ping. a curious companion stops over one and digs. a dull one walks past
+## everything buried in the game and never mentions it.
+var buried: Array = []                  ## { pos, frag, dig, done }
+var dig_t := 0.0
+
 var spawn_rng: Lcg = Lcg.from_string("halt-spawns")
 
 
@@ -366,6 +379,17 @@ func generate() -> void:
 	# the dormant one beside you (34q). it is drawn by the scene; it says one thing
 	# on a timer, and the timer is the only script it has.
 	dormant_line = "return."
+
+	# what is buried (34i §2): scattered wide, deeper east, never marked. the
+	# fragments are WHOLE ... buried things predate the Scatter.
+	var br := Lcg.from_string("what-is-buried")
+	for i in Tuning.BURIED_N:
+		buried.append({
+			"pos": Vector2(500.0 + br.next() * (Tuning.W - 700.0), 120.0 + br.next() * (Tuning.H - 240.0)),
+			"frag": ["mark", "salvage", "inquiry", "brace", "attend", "pursuit", "prudence"][i],
+			"dig": 0.0,
+			"done": false,
+		})
 
 	for i in 5:
 		spawn_threat()
@@ -1484,3 +1508,41 @@ func _story(dt: float) -> void:
 		log_line("I'll be here when you return.")
 		cue("stand")
 		fx("recall", door_pos)
+
+	# the handler by degree 2 (34l): it will not leave. it is waiting for someone.
+	# found, never signposted, in the far corner nobody visits. you can strip it;
+	# it will not resist; it will still be facing the door.
+	waiting_dog_found = waiting_dog_found or player_pos.distance_to(waiting_dog_pos) < 380.0
+	if not waiting_dog_taken and player_pos.distance_to(waiting_dog_pos) < 22.0:
+		waiting_dog_taken = true
+		# it does not resist. the heart it carried is worn to the bone: somebody's.
+		var sv4 := SalvageItem.new()
+		sv4.pos = waiting_dog_pos
+		sv4.frag = "heart"
+		sv4.worn = 1.0
+		salvage.append(sv4)
+		cue("pickup")
+		# ⚠ no comment. it is still facing the door. the game never says whose dog
+		# this was, or whose door. the record is what you are made of.
+
+	# what is buried (34i §2). 🚨 the companion finds it, not you: it has to be
+	# standing over the spot, curious enough to care, and you have to give it the
+	# seconds. a dull machine walks past everything buried and never mentions it.
+	if mind != null and mind.curiosity >= Tuning.BURIED_CURIOSITY:
+		for b in buried:
+			if b.done:
+				continue
+			if companion_pos.distance_to(b.pos) < 30.0 and player_pos.distance_to(b.pos) < 90.0 \
+					and mind.behaviour != CompanionMind.B.FLEE:
+				b.dig += dt
+				if b.dig >= Tuning.BURIED_DIG:
+					b.done = true
+					var sv5 := SalvageItem.new()
+					sv5.pos = b.pos
+					sv5.frag = b.frag
+					sv5.worn = 1.0     # buried things predate the Scatter: WHOLE
+					salvage.append(sv5)
+					cue("pickup")
+					log_line("it dug something up.")
+			else:
+				b.dig = maxf(0.0, b.dig - dt * 2.0)
