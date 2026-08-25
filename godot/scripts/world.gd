@@ -160,6 +160,48 @@ var sounds: Array = []
 var vfx: Array = []                     ## { kind, pos, ... } drained by the scene
 var hitstop_s := 0.0
 
+# ── THE STORYLINE (IND-34q / 34f / 34b / 34r) ───────────────────────────────────
+## 🚨 the machine beside you at wake. broken, dormant, saying one thing. the game
+## never explains it. the player who finishes the game will understand it; the
+## player who does not will still have felt it (34q: the rhyme carries either way).
+var dormant_pos := Vector2(Tuning.W / 2.0 - 120.0, Tuning.H / 2.0 + 60.0)
+var dormant_next := 2.0
+var dormant_line := ""
+
+## the still (34b): they walked here. rows, neat, facing one direction. the best
+## fragments in the game, because they are whole and were not torn out of anything.
+## 🚨 taking from it is the moral centre of the world and the game never comments.
+var still_rows: Array = []              ## [{ pos, seed_v, taken }]
+var still_at := Vector2(240.0, 160.0)
+var still_found := false
+
+## the repair unit (34f): it will fix your companion. free. fully. and it will not
+## stop offering, every time you pass, forever.
+var repair_pos := Vector2(980.0, 240.0)
+var repair_next := 0.0
+
+## the foreman (34f): assigns from a manifest dated before the Scatter. the work
+## order is a physical thing in your pack. there is nothing to report to ... you
+## go back, and it checks.
+var foreman_pos := Vector2(1180.0, 980.0)
+var work_order := false
+var work_done := 0
+var work_handed_in := false
+var manifest_done := 0                  ## of FOREMAN_MANIFEST; finishing it matters
+var foreman_finished := false           ## it logs its last line and powers down
+
+## the commissary (34f): fixed inventory, decades old, priced in a currency that
+## stopped meaning anything. it accepts salvage at a rate it invented. the rate
+## is bad, and it is not negotiable.
+var commissary_pos := Vector2(420.0, 1020.0)
+var scrip := 0                          ## it calls the salvage you feed it "scrip"
+
+## 🚨 THE DOOR (34r). the landmark's threshold. passable when the build is real
+## enough to survive getting there. it never asks. walking in ends the run you
+## were in and begins what the game never names.
+var door_pos := Vector2(Tuning.W - 60.0, 600.0)
+var ascended := false
+
 var spawn_rng: Lcg = Lcg.from_string("halt-spawns")
 
 
@@ -308,6 +350,22 @@ func generate() -> void:
 	bw.seed_v = 12
 	bw.degree = 2
 	threats.append(bw)
+
+	# ── THE STORYLINE GENERATION ──
+	# the still (34b): rows, neat, facing one direction. found, never signposted.
+	# placed far northwest, where nobody has a reason to go early.
+	for row in 3:
+		for col in 5:
+			var st := {
+				"pos": still_at + Vector2(col * 46.0, row * 60.0),
+				"seed_v": 7000 + row * 5 + col,
+				"taken": false,
+			}
+			still_rows.append(st)
+
+	# the dormant one beside you (34q). it is drawn by the scene; it says one thing
+	# on a timer, and the timer is the only script it has.
+	dormant_line = "return."
 
 	for i in 5:
 		spawn_threat()
@@ -1317,3 +1375,106 @@ func tick(dt: float, mv: Vector2, firing: bool, aim: Vector2, recalling := false
 
 	if player_hp <= 0.0:
 		die()
+
+	# ── THE STORYLINE TICK. every piece mechanical, none of it explained. ──
+	_story(dt)
+
+
+## the storyline. IND-34f's register: they say what their function says, nothing
+## else, and none of them know. the player's inference is the whole delivery.
+func _story(dt: float) -> void:
+	# the one beside you (34q). it says its word, at intervals, forever. ⚠ the
+	# interval is long: a stuck record, not a companion.
+	dormant_next -= dt
+	if dormant_next <= 0.0:
+		dormant_next = Tuning.DORMANT_EVERY
+		if player_pos.distance_to(dormant_pos) < 260.0:
+			# it only speaks when someone is near enough to hear. it has been saying
+			# it the whole time either way.
+			log_line("... return.")
+
+	# the repair unit (34f). free, full, forever. it does not address you.
+	if mind != null and companion_hp < companion_max_hp \
+			and player_pos.distance_to(repair_pos) < Tuning.REPAIR_RANGE:
+		repair_next -= dt
+		if repair_next <= 0.0:
+			repair_next = 0.5
+			companion_hp = minf(companion_max_hp, companion_hp + Tuning.REPAIR_RATE)
+			cue("repair")
+			fx("hit", companion_pos)
+			if companion_hp >= companion_max_hp and randf() < 0.2:
+				log_line("COMPLETE. RETURN IF SYMPTOMS PERSIST.")
+
+	# the foreman (34f). standing work: clear the sector, report. the order is a
+	# physical thing you are carrying; there is no journal. ⚠ standing work is
+	# REPEATABLE ... it will offer it again, forever, because that is its job.
+	if not work_order and player_pos.distance_to(foreman_pos) < 60.0:
+		work_order = true
+		work_handed_in = false
+		work_done = 0
+		log_line("FOREMAN 12: INTAKE 7 OBSTRUCTED. CLEAR AND REPORT.")
+	if work_order and not work_handed_in:
+		# "clearing" is killing hostiles in the deep half of the field
+		if player_pos.x > Tuning.DEEP_X:
+			work_done += 1 if randf() < 0.02 else 0
+		if player_pos.distance_to(foreman_pos) < 60.0 and work_done >= Tuning.WORK_ORDER_NEED:
+			work_handed_in = true
+			manifest_done += 1
+			work_order = false
+			work_done = 0
+			log_line("... LOGGED. SHIFT ENDS AT SIXTEEN HUNDRED.")
+			# the reward is what 34f says: the machine now knows a thing, and the
+			# fragments from a completed instruction are the best outside The Still
+			var sv := SalvageItem.new()
+			sv.pos = foreman_pos + Vector2(30, 0)
+			sv.frag = "ward"
+			sv.worn = 0.6
+			salvage.append(sv)
+	# 🚨 the final instruction (34f): finish the manifest and it stops. not
+	# dramatically. it logs, and powers down, and does not start again.
+	if not foreman_finished and manifest_done >= Tuning.FOREMAN_MANIFEST:
+		foreman_finished = true
+		log_line("FOREMAN 12: MANIFEST COMPLETE.")
+		fx("heartdrop", foreman_pos)
+		cue("destroy")
+		for i in 2:
+			var sv2 := SalvageItem.new()
+			sv2.pos = foreman_pos + Vector2((randf() - 0.5) * 40.0, (randf() - 0.5) * 40.0)
+			sv2.frag = ["attend", "repair", "mark"][i]
+			sv2.worn = 1.0     # whole. undamaged. not torn out of anything still running.
+			salvage.append(sv2)
+
+	# the commissary (34f). walk in with salvage; it invents its own exchange rate.
+	if player_pos.distance_to(commissary_pos) < 50.0 and pack.size() > 0:
+		var f3 = pack.pop_back()
+		scrip += 1
+		log_line("COMMISSARY 4: ... ACCEPTED. THANK YOU FOR YOUR SERVICE.")
+		cue("pickup")
+		# what scrip buys: it has what it has. a ration bar is a repair, once.
+		if scrip % 2 == 0:
+			player_hp = minf(Tuning.PLAYER_HP, player_hp + 25.0)
+
+	# the still (34b): walk among the rows. the fragments are whole. taking one is
+	# the moral centre of the world, and the game never says one word about it.
+	still_found = still_found or player_pos.distance_to(still_at) < 420.0
+	for st in still_rows:
+		if st.taken:
+			continue
+		if player_pos.distance_to(st.pos) < 24.0:
+			st.taken = true
+			var sv3 := SalvageItem.new()
+			sv3.pos = st.pos
+			sv3.frag = Fragments.ROLLABLE[randi() % Fragments.ROLLABLE.size()]
+			sv3.worn = 1.0     # 🚨 whole. they were not torn out of anything.
+			salvage.append(sv3)
+			cue("pickup")
+			# ⚠ no comment. no morality. the record is what you are made of (34d).
+
+	# 🚨 THE DOOR (34r). passable when the build is real. it never asks, never
+	# marks, never counts. walking in is the only ending where it keeps running.
+	if mind != null and mind.live_fragments().size() >= Tuning.DOOR_FRAGS \
+			and player_pos.distance_to(door_pos) < 40.0:
+		ascended = true
+		log_line("I'll be here when you return.")
+		cue("stand")
+		fx("recall", door_pos)

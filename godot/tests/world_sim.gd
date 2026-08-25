@@ -174,6 +174,71 @@ func _init() -> void:
 	check("a fresh fragment CAN be taken", stolen_frag != null,
 		"it runs in them, visibly, and it flees with the prize")
 
+	# ── 8 · THE STORYLINE (34q / 34f / 34b / 34r), each claim mechanical ──
+	print("  ... [8] storyline")
+	var w6 := GameWorld.new()
+	w6.player_pos = w6.chassis_pos + Vector2(10, 0)
+	w6.tick(dt, Vector2.ZERO, false, Vector2.ZERO)
+	# the dormant one speaks when you are near, on its timer, and never otherwise
+	w6.player_pos = w6.dormant_pos + Vector2(40, 0)
+	w6.dormant_next = 0.01
+	w6.tick(dt, Vector2.ZERO, false, Vector2.ZERO)
+	check("the dormant one speaks near you", w6.logs.size() > 0 and w6.logs[0].text.contains("return"))
+	# the repair unit heals the companion for free, forever
+	w6.player_pos = w6.repair_pos + Vector2(20, 0)
+	w6.companion_hp = w6.companion_max_hp * 0.3
+	var hp0: float = w6.companion_hp
+	for i in 120:
+		w6.tick(dt, Vector2.ZERO, false, Vector2.ZERO)
+	check("the repair unit mends for free", w6.companion_hp > hp0 + 20.0,
+		"%.0f -> %.0f" % [hp0, w6.companion_hp])
+	# the foreman hands a work order when you walk close, accepts the report, and
+	# the manifest ENDS it
+	w6.player_pos = w6.foreman_pos + Vector2(10, 0)
+	w6.tick(dt, Vector2.ZERO, false, Vector2.ZERO)
+	check("the foreman assigns standing work", w6.work_order,
+		"you walked close; it told you what it wanted")
+	w6.work_done = Tuning.WORK_ORDER_NEED
+	w6.tick(dt, Vector2.ZERO, false, Vector2.ZERO)
+	check("the report is logged", w6.work_handed_in and w6.manifest_done == 1 and not w6.work_order)
+	for k in Tuning.FOREMAN_MANIFEST - 1:
+		w6.work_order = false   # walk away, come back: it offers again, forever
+		w6.player_pos = w6.foreman_pos + Vector2(200, 0)
+		w6.tick(dt, Vector2.ZERO, false, Vector2.ZERO)
+		w6.player_pos = w6.foreman_pos + Vector2(10, 0)
+		w6.tick(dt, Vector2.ZERO, false, Vector2.ZERO)
+		check("[pre] it offers standing work again", w6.work_order)
+		w6.work_done = Tuning.WORK_ORDER_NEED
+		w6.tick(dt, Vector2.ZERO, false, Vector2.ZERO)
+	check("the final instruction ends it", w6.foreman_finished,
+		"it logs its last line and powers down; its fragments are whole")
+	# the still: rows exist, are found by proximity, and give WHOLE fragments
+	check("the still stands in rows", w6.still_rows.size() == 15)
+	var salvage_before: int = w6.salvage.size()
+	w6.player_pos = w6.still_at + Vector2(46, 0)   # standing IN the first row
+	w6.tick(dt, Vector2.ZERO, false, Vector2.ZERO)
+	check("the still is found by walking there", w6.still_found)
+	var worn_all := true
+	var still_given := 0
+	for i in range(salvage_before, w6.salvage.size()):
+		var s = w6.salvage[i]
+		still_given += 1
+		if s.worn < 1.0:
+			worn_all = false
+	check("what the still gives is WHOLE", still_given > 0 and worn_all,
+		"%d whole pieces; not torn out of anything" % still_given)
+	# the door: passable only with a real build, and walking in is the fifth ending
+	check("the door is shut to an empty build", not w6.ascended and w6.player_pos.distance_to(w6.door_pos) > 40.0)
+	var w7 := GameWorld.new()
+	w7.player_pos = w7.chassis_pos + Vector2(10, 0)
+	w7.tick(dt, Vector2.ZERO, false, Vector2.ZERO)
+	w7.mind.install(Fragments.make("attend"), 1, w7.t)
+	w7.mind.install(Fragments.make("repair"), 2, w7.t)
+	w7.player_pos = w7.door_pos + Vector2(5, 0)
+	w7.tick(dt, Vector2.ZERO, false, Vector2.ZERO)
+	check("the door opens to a real build", w7.ascended)
+	check("the last line is the last line", w7.logs.size() > 0 and w7.logs[0].text.begins_with("I'll be here"))
+
 	print("")
 	if fails == 0:
 		print("world sim: clean  the ported world holds every claim.")

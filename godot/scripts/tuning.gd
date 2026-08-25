@@ -175,3 +175,16 @@ const DRAY_KNOCK: float = 150.0
 ## degrees (34l): the rule stays absolute; what varies is whether the machine can
 ## still execute it. intact is the default. degrees are FOUND, not encountered.
 const WARDEN_PERIMETER_R: float = 130.0
+
+# ── THE STORYLINE (IND-34q / 34f / 34b / 34r) ───────────────────────────────────
+## the machine beside you at wake. it says one thing. the game never says why.
+const DORMANT_EVERY: float = 11.0
+## the repair unit: free, full, forever, and it will not stop offering (34f)
+const REPAIR_RATE: float = 20.0
+const REPAIR_RANGE: float = 90.0
+## the foreman's standing work, and its manifest (34f: the final instruction)
+const WORK_ORDER_NEED: int = 5
+const FOREMAN_MANIFEST: int = 3
+## the door (34r). it is passable the way things become passable: when you have
+## the parts. it never asks. it is not a menu option. it is a door.
+const DOOR_FRAGS: int = 3

@@ -19,6 +19,7 @@ var touch: TouchLayer
 
 var last_player_hp := 0.0
 var _hurt_pulse := 0.0
+var _ascension_started := false
 
 var _shots := false
 var _frame := 0
@@ -95,6 +96,11 @@ func _physics_process(dt: float) -> void:
 	far.follow(cam.position)
 	lights.frame_update(world, dt)
 	fx_rig.follow_camera(cam.position)
+	# the ascension: the world goes away for a long moment and stays gone. the
+	# screen agrees with the fiction (the same contraction the recall uses, held).
+	if world.ascended and not _ascension_started:
+		_ascension_started = true
+		world.death_flash = 2.2
 	var dust := world.dust_at(world.player_pos)
 	var mat := vignette.material as ShaderMaterial
 	mat.set_shader_parameter("dust", dust)
@@ -169,6 +175,68 @@ func _draw() -> void:
 	if w.has_chassis and not w.chassis_taken:
 		draw_rect(Rect2(w.chassis_pos.x - 6, w.chassis_pos.y - 6, 12, 12), Palette.at(Palette.COMP_DIM, 0.85))
 		draw_rect(Rect2(w.chassis_pos.x - 11, w.chassis_pos.y - 11, 22, 22), Palette.at(Palette.COMP, 0.30), false, 1.0)
+
+	# ── the storyline, drawn. every piece mechanical. none of it explained. ──
+	# 🚨 THE DORMANT ONE (34q): beside you at wake. broken, dark, except one light
+	# that blinks when it says its word. it faces east. everything about it is a
+	# fact the player reads, never a story they are told.
+	_shadow(w.dormant_pos, 10.0)
+	Sprites.wreck(self, w.dormant_pos, 16.0, 4242, false)
+	# the one light still on in it, pulsing on its word timer
+	var dphase := 1.0 - clampf(w.dormant_next / Tuning.DORMANT_EVERY, 0.0, 1.0)
+	var dglow := 0.25 if dphase > 0.93 else 0.10
+	draw_rect(Rect2(w.dormant_pos.x - 1, w.dormant_pos.y - 10.0, 2, 2), Palette.at(Palette.GLOW, dglow))
+
+	# THE STILL (34b): rows, neat, facing one direction. drawn only once you are
+	# near enough to have found it ... found, never signposted.
+	if w.still_found:
+		for st in w.still_rows:
+			if st.taken:
+				# the gap where one used to be. the game does not comment on it either.
+				continue
+			_shadow(st.pos, 9.0)
+			# intact, upright, all facing east. the tell that they CHOSE is the neatness.
+			draw_rect(Rect2(st.pos.x - 6, st.pos.y - 9, 12, 18), Palette.at(Palette.STOPPED, 1.0))
+			draw_rect(Rect2(st.pos.x - 6, st.pos.y - 9, 12, 2), Palette.at(Palette.MACHINE_HI, 0.3))
+			draw_rect(Rect2(st.pos.x + 4, st.pos.y - 5, 2, 2), Palette.at(Palette.LAMP, 0.5))
+
+	# the repair unit (34f): a maintenance machine with a lit bay, immobile
+	_shadow(w.repair_pos, 13.0)
+	draw_rect(Rect2(w.repair_pos.x - 12, w.repair_pos.y - 10, 24, 20), Palette.MACHINE.lerp(Palette.GROUND2, 0.2))
+	draw_rect(Rect2(w.repair_pos.x - 12, w.repair_pos.y - 10, 24, 3), Palette.at(Palette.MACHINE_HI, 0.5))
+	# its bay light breathes warmer when it is actually working on your companion
+	var working: bool = w.mind != null and w.companion_hp < w.companion_max_hp \
+		and w.player_pos.distance_to(w.repair_pos) < Tuning.REPAIR_RANGE
+	var bay := 0.4 + (0.3 if working else 0.0) + sin(t * 2.2) * 0.1
+	Glows.draw(self, Palette.LAMP, w.repair_pos + Vector2(0, 2), 34.0, bay)
+
+	# the foreman (34f): a taller unit with a clipboard light. after its manifest
+	# completes, it powers down and its light goes out. that is all.
+	_shadow(w.foreman_pos, 10.0)
+	draw_rect(Rect2(w.foreman_pos.x - 7, w.foreman_pos.y - 16, 14, 32), Palette.MACHINE.lerp(Palette.VOID, 0.15))
+	draw_rect(Rect2(w.foreman_pos.x - 7, w.foreman_pos.y - 16, 14, 2), Palette.at(Palette.MACHINE_HI, 0.45))
+	if not w.foreman_finished:
+		draw_rect(Rect2(w.foreman_pos.x + 5, w.foreman_pos.y - 12, 2, 2), Palette.at(Palette.LAMP, 0.8))
+	else:
+		# done. stopped. the light is out. take its fragments or leave them.
+		pass
+
+	# the commissary (34f): a shuttered kiosk, one lit menu panel
+	_shadow(w.commissary_pos, 12.0)
+	draw_rect(Rect2(w.commissary_pos.x - 14, w.commissary_pos.y - 10, 28, 20), Palette.MACHINE.lerp(Palette.GROUND2, 0.35))
+	draw_rect(Rect2(w.commissary_pos.x - 10, w.commissary_pos.y - 6, 20, 8), Palette.at(Palette.VOID, 0.8))
+	draw_rect(Rect2(w.commissary_pos.x - 10, w.commissary_pos.y - 6, 20, 1), Palette.at(Palette.LAMP, 0.5))
+	if w.scrip > 0:
+		draw_string(ThemeDB.fallback_font, w.commissary_pos + Vector2(18, -8), "scrip %d" % w.scrip,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Palette.at(Palette.SALVAGE, 0.7))
+
+	# 🚨 THE DOOR (34r): the landmark's threshold, drawn as a standing opening in a
+	# hull wall. no marker, no prompt, no label. it is passable when it is passable.
+	draw_rect(Rect2(w.door_pos.x - 16, w.door_pos.y - 30, 32, 60), Palette.at(Palette.VOID, 0.9))
+	draw_rect(Rect2(w.door_pos.x - 16, w.door_pos.y - 30, 32, 60), Palette.at(Palette.STRUCTURE, 0.9), false, 2.0)
+	if w.mind != null and w.mind.live_fragments().size() >= Tuning.DOOR_FRAGS:
+		# it is passable now. the opening holds a faint light that was not there before.
+		Glows.draw(self, Palette.COMP, w.door_pos, 40.0, 0.10 + sin(t * 0.8) * 0.03)
 
 	# threats
 	for th in w.threats:
