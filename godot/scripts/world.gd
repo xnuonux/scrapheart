@@ -205,6 +205,7 @@ var commissary_frag := true             ## the last fragment it will ever sell
 ## were in and begins what the game never names.
 var door_pos := Vector2(Tuning.W - 60.0, 600.0)
 var ascended := false
+var ascended_at := -1.0
 
 ## the handler by degree (34l #2): it will not leave. it is waiting for someone.
 ## you cannot call it, cannot lead it, cannot pick it up. you can strip it for
@@ -774,6 +775,27 @@ func hurt_threat(th, dmg: float) -> void:
 		w.frag = "selfpres"
 		salvage.append(w)
 		hitstop(220)
+	elif th.kind == "scav":
+		# IND-34b: kill it and take it back. ⚠ recovery is real but not clean: the
+		# stolen piece comes back degraded (the take cost it something). the drop
+		# carries its worn, so a loved piece survives the round trip; a fresh one
+		# may come back half-ruined. the world sim proves the round trip.
+		if th.stolen != null:
+			var recovered: Fragments.Frag = th.stolen
+			recovered.degradation = Tuning.degrade(recovered.degradation, recovered.worn)
+			if recovered.degradation < 1.0:
+				var rs := SalvageItem.new()
+				rs.pos = th.pos + Vector2(-8, 0)
+				rs.frag = recovered.id
+				# the degradation rides as REDUCED worn: a worn piece stays relatively
+				# better than a wild one, which is the entire 34i glow economy
+				rs.worn = maxf(0.0, recovered.worn - recovered.degradation * 0.5)
+				salvage.append(rs)
+			# else: worn to nothing in its captivity. it is gone. no comment.
+		var sc := SalvageItem.new()
+		sc.pos = th.pos
+		sc.frag = pick_frag() if randf() < 0.45 else ""
+		salvage.append(sc)
 	elif th.kind == "caster":
 		var c := SalvageItem.new()
 		c.pos = th.pos
@@ -1524,9 +1546,16 @@ func _story(dt: float) -> void:
 
 	# 🚨 THE DOOR (34r). passable when the build is real. it never asks, never
 	# marks, never counts. walking in is the only ending where it keeps running.
+	# ⚠ and it stays. you go through; it does not. the thing that makes it real
+	# is the thing that makes it unable to come with you (34r). the game never
+	# says this either: the player watches it not follow, and understands.
 	if mind != null and mind.live_fragments().size() >= Tuning.DOOR_FRAGS \
 			and player_pos.distance_to(door_pos) < 40.0:
 		ascended = true
+		ascended_at = t
+		# it walks as far as it walks with you anywhere: to the threshold. then no.
+		companion_pos = door_pos + Vector2(-26.0, 14.0)
+		companion_prev = companion_pos
 		log_line("I'll be here when you return.")
 		cue("stand")
 		fx("recall", door_pos)

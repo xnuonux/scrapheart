@@ -20,6 +20,11 @@ var touch: TouchLayer
 var last_player_hp := 0.0
 var _hurt_pulse := 0.0
 var _ascension_started := false
+## the opening (34q): you wake with nothing BESIDE a broken machine. the first
+## frame holds on that composition ... camera on the dormant one, a breath, then
+## control. no text, no fade-in of a title. the game starts by showing you the
+## thing the whole game is about, before you know what it is.
+var _open_hold := 2.6
 
 var _shots := false
 var _frame := 0
@@ -41,6 +46,9 @@ func _ready() -> void:
 	touch.game = self
 	cam.position = world.player_pos
 	cam.target = world.player_pos
+	# the opening hold: the camera starts ON the dormant machine, beside you
+	cam.position = world.dormant_pos
+	cam.target = world.dormant_pos
 
 	_shots = OS.get_cmdline_user_args().has("--shots")
 	if _shots:
@@ -174,6 +182,21 @@ func _physics_process(dt: float) -> void:
 		var recalling := Input.is_action_just_pressed("recall")
 		var mend_held := Input.is_action_pressed("mend")
 
+		# the opening hold: the world runs, you cannot move yet. the camera drifts
+		# from the dormant machine to YOU, and then the game is yours. ⚠ any key
+		# skips it; a hold you cannot skip is a cutscene, and this world has none.
+		if _open_hold > 0.0:
+			_open_hold -= dt
+			var any_input := mv != Vector2.ZERO or Input.is_action_just_pressed("recall") \
+				or Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+			if any_input:
+				_open_hold = 0.0
+			if _open_hold > 1.2:
+				cam.target = world.dormant_pos
+			else:
+				# the handover: the camera swings to you, and the rhyme begins
+				cam.target = world.player_pos
+
 		world.tick(dt, mv, firing, aim, recalling, mend_held)
 
 		# trauma rides the damage the world already reports
@@ -194,11 +217,13 @@ func _physics_process(dt: float) -> void:
 	far.follow(cam.position)
 	lights.frame_update(world, dt)
 	fx_rig.follow_camera(cam.position)
-	# the ascension: the world goes away for a long moment and stays gone. the
-	# screen agrees with the fiction (the same contraction the recall uses, held).
+	# the ascension (34r): you go through. it does not. the screen does not black
+	# out ... the world continues, and the companion stands at the threshold, and
+	# the player watches it not follow. the sound of the world continues. that is
+	# the whole beat, and it must not be over-produced (34d: no swell, no camera).
 	if world.ascended and not _ascension_started:
 		_ascension_started = true
-		world.death_flash = 2.2
+		world.death_flash = 0.55   # a breath of dark as you cross, then the world returns
 	var dust := world.dust_at(world.player_pos)
 	var mat := vignette.material as ShaderMaterial
 	mat.set_shader_parameter("dust", dust)
@@ -286,17 +311,28 @@ func _draw() -> void:
 	draw_rect(Rect2(w.dormant_pos.x - 1, w.dormant_pos.y - 10.0, 2, 2), Palette.at(Palette.GLOW, dglow))
 
 	# THE STILL (34b): rows, neat, facing one direction. drawn only once you are
-	# near enough to have found it ... found, never signposted.
+	# near enough to have found it ... found, never signposted. ⚠ each machine is
+	# an individual (seeded, like every wreck in the field) and they all face EAST:
+	# the tell that they chose is the neatness, and the neatness is the whole story.
 	if w.still_found:
+		# one shared light, falling on the rows from the east ... the direction
+		# they face is the only thing the game will ever say about them.
+		Glows.draw(self, Palette.LAMP, w.still_at + Vector2(240.0, 60.0), 260.0, 0.10)
 		for st in w.still_rows:
 			if st.taken:
 				# the gap where one used to be. the game does not comment on it either.
 				continue
+			var sr := Sprites.Rng.new(st.seed_v)
+			var hh := 16.0 + sr.next() * 6.0      # each one a different height
+			var ww := 10.0 + sr.next() * 4.0      # ... and a different width
+			var lean := (sr.next() - 0.5) * 1.6   # ... and a slightly different posture
 			_shadow(st.pos, 9.0)
-			# intact, upright, all facing east. the tell that they CHOSE is the neatness.
-			draw_rect(Rect2(st.pos.x - 6, st.pos.y - 9, 12, 18), Palette.at(Palette.STOPPED, 1.0))
-			draw_rect(Rect2(st.pos.x - 6, st.pos.y - 9, 12, 2), Palette.at(Palette.MACHINE_HI, 0.3))
-			draw_rect(Rect2(st.pos.x + 4, st.pos.y - 5, 2, 2), Palette.at(Palette.LAMP, 0.5))
+			draw_rect(Rect2(st.pos.x - ww / 2.0 + lean, st.pos.y - hh, ww, hh), Palette.at(Palette.STOPPED, 1.0))
+			draw_rect(Rect2(st.pos.x - ww / 2.0 + lean, st.pos.y - hh, ww, 2), Palette.at(Palette.MACHINE_HI, 0.3))
+			# the head, angled east. every one of them.
+			draw_rect(Rect2(st.pos.x + ww / 2.0 - 3.0, st.pos.y - hh - 3.0, 5.0, 4.0), Palette.at(Palette.STOPPED, 1.0))
+			# and the light that is still on in it. they are not off. they stopped.
+			draw_rect(Rect2(st.pos.x + ww / 2.0 - 1.0, st.pos.y - hh + 3.0, 2.0, 2.0), Palette.at(Palette.LAMP, 0.45))
 
 	# the repair unit (34f): a maintenance machine with a lit bay, immobile
 	_shadow(w.repair_pos, 13.0)

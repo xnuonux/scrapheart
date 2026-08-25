@@ -176,6 +176,38 @@ func _init() -> void:
 	check("a fresh fragment CAN be taken", stolen_frag != null,
 		"it runs in them, visibly, and it flees with the prize")
 
+	# ... and killing the scavenger gives it back, degraded (34b: real, not clean)
+	var w5b := GameWorld.new()
+	w5b.player_pos = w5b.chassis_pos + Vector2(10, 0)
+	w5b.tick(dt, Vector2.ZERO, false, Vector2.ZERO)
+	var fresh2 := Fragments.make("inquiry")
+	fresh2.install_t = w5b.t
+	w5b.mind.installed[1] = fresh2
+	w5b.mind.recompute()
+	var round_trip := false
+	for i in 60 * 40:
+		if i % 90 == 0:
+			w5b._spawn_scav(0.6)
+		# fire at the thief the moment it has the prize: the bot fights back
+		var thief = null
+		for th in w5b.threats:
+			if th.kind == "scav" and th.stolen != null:
+				thief = th
+		if thief != null:
+			w5b.player_pos = thief.pos + Vector2(-60, 0)
+			w5b.tick(dt, Vector2.ZERO, true, thief.pos)
+		else:
+			w5b.tick(dt, Vector2.ZERO, false, Vector2.ZERO)
+		for s in w5b.salvage:
+			if s.frag == "inquiry":
+				round_trip = true
+		if round_trip:
+			break
+		if w5b.t > 300.0:
+			break
+	check("killing the thief returns the piece (degraded)", round_trip,
+		"recovery is real but not clean")
+
 	# ── 8 · THE STORYLINE (34q / 34f / 34b / 34r), each claim mechanical ──
 	print("  ... [8] storyline")
 	var w6 := GameWorld.new()
