@@ -167,6 +167,20 @@ Everything below exists only to make that gate answerable.
       "forever" describes its behaviour, not its armour. `_probe_immortal` 5/5, and the
       neighbours re-ran green: loss 9/9+both-ways, death 12/12, calib 5/5, gate's hurt-leg 3/3
       (its flee leg is emergent and sits at 2/3, as it did before the change).
+- [x] 🚨 **THE GODOT PORT IS THE GAME NOW** (beast-PC autonomous arc, 2026-08-25). The whole
+      reference world runs in-engine, measured to the same decimals (heat lock 1.97s / 2.02s).
+      Landed in order: renderer foundation (palette/sprites/glows/vignette-as-shader, field
+      scene) → the world port (both damage doors born singular) → the art pass (shader floor,
+      pooled 2D lights, shadows, motivated particles, film-grain haze, procedural sfx, JetBrains
+      Mono) → IND-34o registers (far colossi at 35% parallax beyond the world edges; companion
+      legs derived from installed fragments; handler blinks; touch layer) → THE BESTIARY (loops
+      that burn out shedding their own silhouette · scavengers that TAKE a fragment and run it,
+      glowing with its worn, floor-proven both ways · herders that move you · pests · drays ·
+      warden degrees 3+4) → THE STORYLINE (the dormant one that says "return." · the repair unit
+      free forever · the foreman whose manifest ENDS it · the commissary's invented exchange rate
+      · THE STILL in rows, whole fragments, uncommented · the door, passable at 3 fragments, whose
+      last line is the first line spoken back). Receipts: world_sim.gd 30+ claims clean, parity
+      clean, every frame read. Standing-work repeatability was caught by the sim, not by me.
 
 ## found by playtesting, fixed
 

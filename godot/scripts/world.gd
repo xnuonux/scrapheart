@@ -1300,10 +1300,16 @@ func tick(dt: float, mv: Vector2, firing: bool, aim: Vector2, recalling := false
 		spawn_threat()
 		spawn_timer = (4.4 - depth * 1.4) + randf() * 3.0
 
-	# ── the player picks up what they walk over ──
+	# ── the player picks up what they walk over; nearby salvage drifts to them.
+	# ⚠ magnetism is a FEEL decision: the walk-over radius stays honest (18px), and
+	# only things you have nearly reached slide the last stretch. it removes
+	# pixel-hunting, never proximity itself.
 	for i2 in range(salvage.size() - 1, -1, -1):
-		if salvage[i2].pos.distance_to(player_pos) < 18.0:
-			var s2: SalvageItem = salvage[i2]
+		var s2: SalvageItem = salvage[i2]
+		var d_pick := s2.pos.distance_to(player_pos)
+		if d_pick < 74.0:
+			s2.pos += (player_pos - s2.pos) * minf(1.0, dt * (10.0 if d_pick < 40.0 else 4.5))
+		if s2.pos.distance_to(player_pos) < 18.0:
 			if s2.frag != "":
 				var f := Fragments.make(s2.frag, s2.worn)
 				pack.append(f)
