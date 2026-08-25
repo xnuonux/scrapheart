@@ -354,6 +354,10 @@ func kill_handler() -> void:
 	handler_lost_at = t
 	hitstop(160)
 	cue("destroy")
+	# IND-34k: the moment itself. one ring of light leaving the body, and the screen
+	# agrees with what just happened. ⚠ no foreshadowing anywhere before this line ...
+	# the beat lands BECAUSE nothing advertised it.
+	fx("heartdrop", handler.pos)
 	# IND-34k: something in it is still on. the first glowing fragment the player ever
 	# sees, and it belonged to someone they knew.
 	var sv := SalvageItem.new()

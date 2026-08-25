@@ -5,6 +5,7 @@ shader_type canvas_item;
 
 uniform float dust : hint_range(0.0, 1.0) = 0.0;
 uniform float depth : hint_range(0.0, 1.0) = 0.0;
+uniform float hurt : hint_range(0.0, 1.0) = 0.0;   // the moment you got hit, decaying
 
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
@@ -30,6 +31,12 @@ void fragment() {
 	// that you notice its absence rather than its presence.
 	float g = hash(UV * vec2(1607.0, 1201.0) + vec2(TIME * 61.7, TIME * 43.3));
 	a += (g - 0.5) * 0.055;
+
+	// 🚨 HARM IS THE ONLY SATURATED COLOUR IN THE GAME, and this is its second moving
+	// surface: when you are hit, the EDGE of the screen carries it. harm rides the
+	// same vignette falloff the dark does, so the pain lives where the danger lives.
+	col = mix(col, vec3(0.788, 0.255, 0.310), hurt * 0.8);
+	a += hurt * v * 0.35;
 
 	COLOR = vec4(col, clamp(a, 0.0, 1.0));
 }

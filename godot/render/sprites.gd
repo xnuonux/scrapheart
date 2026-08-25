@@ -61,21 +61,30 @@ static func wreck(ci: CanvasItem, pos: Vector2, s: float, seed_v: int, on := fal
 		ci.draw_rect(Rect2(pos.x - 1.0, pos.y - h / 2.0 - 3.0, 2.0, 2.0), Palette.at(Palette.LAMP, pulse))
 
 
-## an active machine. same construction, colder colour, and it moves.
+## an active machine. same construction, colder colour, and it MOVES: three legs in a
+## walking gait (IND-34o: fluid throughout ... the hand-crafted register lives here).
 static func machine(ci: CanvasItem, pos: Vector2, s: float, seed_v: int, wind: float) -> void:
 	var r := Rng.new(seed_v)
 	var lean := wind * 3.0
+	var t := _now()
 
 	var w := s * 1.4
 	var h := s * 1.2
-	ci.draw_rect(Rect2(pos.x - w / 2.0 + lean, pos.y - h / 2.0, w, h), Palette.MACHINE)
+	# a slight bob as it walks ... something this small still has weight
+	var bob := sin(t * 9.0 + float(seed_v)) * 0.8
+	var body_pos := pos + Vector2(lean, bob - h / 2.0)
+	ci.draw_rect(Rect2(body_pos.x, body_pos.y, w, h), Palette.MACHINE)
 
+	# the gait: legs counter-swing around the body. the seed staggers the phase so a
+	# crowd never moves in lockstep.
+	var phase0 := t * 8.0 + float(seed_v) * 0.37
 	for i in 3:
-		var a := (float(i) / 3.0) * TAU + r.next() * 0.6
+		var a0 := (float(i) / 3.0) * TAU + r.next() * 0.6
 		var len := s * (0.8 + r.next() * 0.5)
-		_limb(ci, pos, a, len, 3.0, Palette.MACHINE)
+		var swing := sin(phase0 + float(i) * 2.1) * 3.0
+		_limb(ci, pos + Vector2(0, bob), a0 + swing * 0.06, len + swing, 3.0, Palette.MACHINE)
 
-	ci.draw_rect(Rect2(pos.x - w / 2.0 + lean, pos.y - h / 2.0, w, 2.0), Palette.MACHINE_HI)
+	ci.draw_rect(Rect2(body_pos.x, body_pos.y, w, 2.0), Palette.MACHINE_HI)
 
 	# the telegraph. they were built to be safe around humans and that safety system
 	# is one of the few things still working (IND-34j).
@@ -108,15 +117,18 @@ static func caster(ci: CanvasItem, pos: Vector2, s: float, seed_v: int, wind: fl
 ## it is warning you, exactly as it was built to.
 static func warden(ci: CanvasItem, pos: Vector2, s: float, wind: float) -> void:
 	var lean := wind * 4.0
+	var t := _now()
 	var body := Palette.MACHINE.lerp(Palette.VOID, 0.25)
-	ci.draw_rect(Rect2(pos.x - s * 0.8 + lean, pos.y - s * 0.9, s * 1.6, s * 1.8), body)
+	# it is enormous and it is slow: a breathing sway, not a bob. equipment idles.
+	var sway := sin(t * 1.1) * 1.2
+	ci.draw_rect(Rect2(pos.x - s * 0.8 + lean, pos.y - s * 0.9 + sway, s * 1.6, s * 1.8), body)
 	for i in 4:
-		var a := (float(i) / 4.0) * TAU + 0.4
-		_limb(ci, pos, a, s * 1.5, 6.0, body)
-	ci.draw_rect(Rect2(pos.x - s * 0.8 + lean, pos.y - s * 0.9, s * 1.6, 3.0), Palette.at(Palette.MACHINE_HI, 0.5))
+		var a := (float(i) / 4.0) * TAU + 0.4 + sin(t * 0.9 + float(i) * 1.7) * 0.03
+		_limb(ci, pos + Vector2(0, sway), a, s * 1.5, 6.0, body)
+	ci.draw_rect(Rect2(pos.x - s * 0.8 + lean, pos.y - s * 0.9 + sway, s * 1.6, 3.0), Palette.at(Palette.MACHINE_HI, 0.5))
 	# the working light. amber, because it is a maintenance unit doing maintenance.
-	var pulse := 0.5 + sin(_now() / 0.26) * 0.35
-	ci.draw_rect(Rect2(pos.x - 3.0, pos.y - s * 0.9 - 6.0, 6.0, 4.0), Palette.at(Palette.LAMP, pulse))
+	var pulse := 0.5 + sin(t / 0.26) * 0.35
+	ci.draw_rect(Rect2(pos.x - 3.0, pos.y - s * 0.9 - 6.0 + sway, 6.0, 4.0), Palette.at(Palette.LAMP, pulse))
 	if wind > 0.0:
 		ci.draw_arc(pos, 40.0 + wind * 58.0, 0.0, TAU, 48, Palette.at(Palette.HARM, minf(0.95, wind * 0.75)), 3.0)
 
@@ -126,53 +138,101 @@ static func warden(ci: CanvasItem, pos: Vector2, s: float, wind: float) -> void:
 ## cold, because it is the only friendly thing in the game the player did not build.
 static func handler(ci: CanvasItem, pos: Vector2, bob: float) -> void:
 	var b := sin(bob) * 1.2
+	var t := _now()
 	var body := Palette.LAMP.lerp(Palette.MACHINE, 0.55)
+	# ears back when it bobs: the antenna trails the motion, like a dog's
+	var trail := sin(bob - 0.7) * 1.6
 	ci.draw_rect(Rect2(pos.x - 6.0, pos.y - 3.0 + b, 12.0, 6.0), body)   # body, long and low
 	ci.draw_rect(Rect2(pos.x + 4.0, pos.y - 6.0 + b, 5.0, 5.0), body)   # head, forward
 	ci.draw_rect(Rect2(pos.x - 5.0, pos.y + 3.0, 2.0, 3.0), Palette.at(Palette.STRUCTURE, 0.9))
 	ci.draw_rect(Rect2(pos.x + 3.0, pos.y + 3.0, 2.0, 3.0), Palette.at(Palette.STRUCTURE, 0.9))
-	ci.draw_rect(Rect2(pos.x + 6.0, pos.y - 5.0 + b, 2.0, 2.0), Palette.at(Palette.LAMP, 0.95))
+	# the antenna: one pixel-line that never stops being alive
+	_limb(ci, pos + Vector2(-4.0, -3.0 + b), -2.2 + trail * 0.08, 6.0, 1.0, Palette.at(body, 0.8))
+	# the eye blinks. rarely. a thing that blinks is a thing that is home.
+	var blink := fmod(t * 0.31 + 0.13, 1.0) > 0.04
+	ci.draw_rect(Rect2(pos.x + 6.0, pos.y - 5.0 + b, 2.0, 2.0 if blink else 1.0),
+		Palette.at(Palette.LAMP, 0.95 if blink else 0.4))
 
 
 ## the companion. assembled, so its silhouette grows with what is installed.
+## 🚨 IND-34o §4: procedural forever, because "my machine moves differently to yours"
+## is the emotional point. the legs are derived from what is INSTALLED: gait gives two
+## striding limbs, pursuit gives a low skitter, prudence plants a wide stance, and a
+## bare chassis just trundles on one foot. nobody animates this; the build does.
 static func companion(ci: CanvasItem, pos: Vector2, parts: int, exposure: float, hurt: float,
-		empty := 0, mending := false, facing := 0.0, marking := false) -> void:
+		empty := 0, mending := false, facing := 0.0, marking := false,
+		frag_ids: Array = [], moving := false, heading := Vector2.ZERO) -> void:
+	var t := _now()
 	if exposure > 0.0:
 		ci.draw_arc(pos, 11.0 + exposure * 7.0, 0.0, TAU, 32, Palette.at(Palette.COMP, 0.22 * exposure), 1.0)
 	if mending:
-		var b := 0.35 + sin(_now() / 0.18) * 0.25
+		var b := 0.35 + sin(t / 0.18) * 0.25
 		ci.draw_arc(pos, 13.0, 0.0, TAU, 32, Palette.at(Palette.LAMP, b), 1.0)
+
+	# ── the legs, derived from the build. this is the one place in the game where what
+	# you installed changes how the thing MOVES, so it is drawn like it matters. ──
+	var has_gait := frag_ids.has("gait")
+	var has_pursuit := frag_ids.has("pursuit")
+	var has_prudence := frag_ids.has("prudence")
+	var stride := 0.0
+	if moving:
+		stride = 1.0
+	var phase := t * (11.0 if has_pursuit else 7.0)
+	var spread := 5.5 if has_prudence else 3.5
+	var leg_len := 7.0 if has_gait else 3.5
+	if has_gait or has_pursuit:
+		# two legs, counter-phasing, planted wide if it is cautious
+		for k in 2:
+			var ph := phase + (PI if k == 1 else 0.0)
+			var swing := sin(ph) * leg_len * stride
+			var lift := maxf(0.0, cos(ph)) * 2.2 * stride
+			var base := pos + Vector2(0, 5.0) + Vector2(-spread if k == 0 else spread, 0)
+			var foot := base + heading * swing + Vector2(0, lift)
+			_limb(ci, base, (foot - base).angle(), base.distance_to(foot) + 1.0, 1.8,
+				Palette.at(Palette.COMP_DIM, 0.95))
+	elif moving:
+		# the bare chassis trundles: one foot, hopping
+		var hop := absf(sin(phase)) * 1.6
+		ci.draw_rect(Rect2(pos.x - 1.5, pos.y + 5.0 - hop, 3.0, 3.0), Palette.at(Palette.COMP_DIM, 0.95))
+
 	# 🚨 the gate asks whether players REACT when it is badly hurt, so being hurt has to
 	# be visible on the thing itself. it falters rather than flashing: the light stutters
 	# and the body dims, a machine in trouble instead of a health bar in disguise.
+	var body_pos := pos + (Vector2(0, -1.6) if (has_gait or has_pursuit) else Vector2.ZERO)
 	if hurt > Tuning.HURT_THRESHOLD:
-		var stutter := 1.0 if sin(_now() / 0.09) > 0.2 else 0.45
-		ci.draw_rect(Rect2(pos.x - 8.0, pos.y - 8.0, 16.0, 16.0), Palette.at(Palette.HARM, 0.32 * hurt * stutter))
+		var stutter := 1.0 if sin(t / 0.09) > 0.2 else 0.45
+		ci.draw_rect(Rect2(body_pos.x - 8.0, body_pos.y - 8.0, 16.0, 16.0), Palette.at(Palette.HARM, 0.32 * hurt * stutter))
 	# ⚠ dim toward the cold structure colour, NOT toward harm ... comp blue into harm red
-	# made a PURPLE machine once, and there is no purple anywhere in this palette.
-	# ⚠ the SAME threshold as the log line and the halo. three thresholds for one idea is
-	# how a game says "it is hurt" about a machine that still looks fine.
+	# made a PURPLE machine once. the light goes out; it does not turn red.
 	var body := Palette.COMP.lerp(Palette.STRUCTURE, minf(0.7, hurt * 0.7)) if hurt > Tuning.HURT_THRESHOLD else Palette.COMP
-	ci.draw_rect(Rect2(pos.x - 5.0, pos.y - 5.0, 10.0, 10.0), body)
+	ci.draw_rect(Rect2(body_pos.x - 5.0, body_pos.y - 5.0, 10.0, 10.0), body)
 	# one small mark per installed fragment. you can read what it is made of.
 	for i in parts:
-		ci.draw_rect(Rect2(pos.x - 5.0 + i * 4.0, pos.y + 6.0, 3.0, 2.0), Palette.at(Palette.COMP_DIM, 0.9))
+		ci.draw_rect(Rect2(body_pos.x - 5.0 + i * 4.0, body_pos.y + 6.0, 3.0, 2.0), Palette.at(Palette.COMP_DIM, 0.9))
 	# ⚠ IND-34a: one hollow mark per EMPTY socket. the scar is on the body, not in a menu.
 	for i in empty:
-		ci.draw_rect(Rect2(pos.x - 4.5 + (parts + i) * 4.0, pos.y + 6.5, 2.0, 1.0),
+		ci.draw_rect(Rect2(body_pos.x - 4.5 + (parts + i) * 4.0, body_pos.y + 6.5, 2.0, 1.0),
 			Palette.at(Palette.COMP_DIM, 0.5), false, 1.0)
-	# 🚨 the light it has instead of a face, on the side the machine is LOOKING. no icon,
-	# no arrow, no dialogue ... the player learns to read a two-pixel light.
-	var lp := pos + Vector2(cos(facing), sin(facing)) * 3.4
+	# 🚨 the light it has instead of a face, on the side the machine is LOOKING.
+	var lp := body_pos + Vector2(cos(facing), sin(facing)) * 3.4
 	ci.draw_rect(Rect2(lp.x - 1.0, lp.y - 1.0, 2.0, 2.0), Palette.at(Palette.GLOW, 0.95 if marking else 0.8))
 	# ⚠ when it has noticed something you have not, the light steadies and reaches a
 	# little further. that is the ONLY tell, and it is deliberately easy to miss.
 	if marking:
-		var mp := pos + Vector2(cos(facing), sin(facing)) * 6.0
+		var mp := body_pos + Vector2(cos(facing), sin(facing)) * 6.0
 		ci.draw_rect(Rect2(mp.x - 1.0, mp.y - 1.0, 2.0, 2.0), Palette.at(Palette.GLOW, 0.22))
 
 
-static func player(ci: CanvasItem, pos: Vector2, hurt: bool, retreating: bool) -> void:
-	ci.draw_circle(pos, 7.0, Palette.PLAYER_HI if hurt else Palette.PLAYER)
+static func player(ci: CanvasItem, pos: Vector2, hurt: bool, retreating: bool, moving := false, heading := Vector2.ZERO) -> void:
+	# squash and stretch: the living thing deforms with its own motion. the machines
+	# never do ... that is one of the ways you can tell which one is you.
+	var r := 7.0
+	if moving and heading != Vector2.ZERO:
+		var stretch := 1.12
+		ci.draw_set_transform(pos, heading.angle(), Vector2(stretch, 2.0 - stretch))
+		ci.draw_circle(Vector2.ZERO, r, Palette.PLAYER_HI if hurt else Palette.PLAYER)
+		ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	else:
+		ci.draw_circle(pos, r, Palette.PLAYER_HI if hurt else Palette.PLAYER)
 	if retreating:
 		ci.draw_arc(pos, 13.0, 0.0, TAU, 32, Palette.at(Palette.LAMP, 0.5), 1.0)

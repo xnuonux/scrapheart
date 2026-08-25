@@ -14,8 +14,11 @@ var hud   # hud.gd Control; untyped so the cross-script surface stays duck-typed
 var lights: LightRig
 var fx_rig: VfxRig
 var sfx_rig: SfxRig
+var far: Farfield
+var touch: TouchLayer
 
 var last_player_hp := 0.0
+var _hurt_pulse := 0.0
 
 var _shots := false
 var _frame := 0
@@ -32,6 +35,9 @@ func _ready() -> void:
 	lights = $Lights
 	fx_rig = $Vfx
 	sfx_rig = $Sfx
+	far = $Farfield
+	touch = $HUD/Touch
+	touch.game = self
 	cam.position = world.player_pos
 	cam.target = world.player_pos
 
@@ -57,8 +63,15 @@ func _physics_process(dt: float) -> void:
 		if mv.length() > 1.0:
 			mv = mv.normalized()
 
-		var firing: bool = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and not hud.pack_open
-		var aim := get_global_mouse_position()
+		var firing: bool = (Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) or touch.firing) \
+			and not hud.pack_open
+		var aim := touch.aim_world if touch.firing else get_global_mouse_position()
+		# the stick merges over the keys, exactly as the web intent layer does
+		if touch.stick_active:
+			mv = touch.stick_vec
+		if mv.length() > 1.0:
+			mv = mv.normalized()
+
 		var recalling := Input.is_action_just_pressed("recall")
 		var mend_held := Input.is_action_pressed("mend")
 
@@ -79,12 +92,19 @@ func _physics_process(dt: float) -> void:
 		sfx_rig.drain(world.sounds)
 
 	cam.target = world.player_pos
+	far.follow(cam.position)
 	lights.frame_update(world, dt)
 	fx_rig.follow_camera(cam.position)
 	var dust := world.dust_at(world.player_pos)
 	var mat := vignette.material as ShaderMaterial
 	mat.set_shader_parameter("dust", dust)
 	mat.set_shader_parameter("depth", Tuning.depth_at(world.player_pos.x))
+	# the hurt pulse: a spike that decays over ~0.4s. the world reports WHEN, the
+	# haze reports HOW LOUD.
+	if world.t - world.last_hurt < 0.12:
+		_hurt_pulse = 1.0
+	_hurt_pulse = maxf(0.0, _hurt_pulse - dt * 2.6)
+	mat.set_shader_parameter("hurt", _hurt_pulse)
 	queue_redraw()
 	hud.queue_redraw()
 
@@ -203,12 +223,20 @@ func _draw() -> void:
 
 	if w.mind != null:
 		_shadow(w.companion_pos, 7.0)
+		var ids: Array = []
+		for fr in w.mind.live_fragments():
+			ids.append(fr.id)
+		var comp_moving := w.companion_pos.distance_to(w.companion_prev) > 0.5
+		var heading := (w.companion_pos - w.companion_prev).normalized()
 		Sprites.companion(self, w.companion_pos, w.mind.live_fragments().size(), w.exposure,
 			1.0 - w.companion_hp / w.companion_max_hp, w.mind.empty_sockets(),
-			w.mending > 0.0, w.mind.facing, w.mind.marked != null)
+			w.mending > 0.0, w.mind.facing, w.mind.marked != null,
+			ids, comp_moving, heading)
 
 	_shadow(w.player_pos, 8.0)
-	Sprites.player(self, w.player_pos, w.t - w.last_hurt < 0.12, w.player_retreating)
+	var p_moving := w.player_pos.distance_to(w.player_prev) > 0.5
+	Sprites.player(self, w.player_pos, w.t - w.last_hurt < 0.12, w.player_retreating,
+		p_moving, (w.player_pos - w.player_prev).normalized())
 
 	# 🚨 THE DUST. inside the camera transform, so you watch it arrive from across the
 	# map ... weather you cannot see coming is a random punishment.

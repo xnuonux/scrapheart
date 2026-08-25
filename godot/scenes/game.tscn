@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://scenes/game.gd" id="1_game"]
 [ext_resource type="Script" path="res://render/game_camera.gd" id="2_cam"]
@@ -8,6 +8,8 @@
 [ext_resource type="Script" path="res://render/lights.gd" id="6_lights"]
 [ext_resource type="Script" path="res://render/vfx.gd" id="7_vfx"]
 [ext_resource type="Script" path="res://render/sfx.gd" id="8_sfx"]
+[ext_resource type="Script" path="res://render/farfield.gd" id="9_far"]
+[ext_resource type="Script" path="res://render/touch.gd" id="10_touch"]
 
 [sub_resource type="ShaderMaterial" id="vig_mat"]
 shader = ExtResource("3_vig")
@@ -16,6 +18,9 @@ shader_parameter/depth = 0.0
 
 [node name="Game" type="Node2D"]
 script = ExtResource("1_game")
+
+[node name="Farfield" type="Node2D" parent="."]
+script = ExtResource("9_far")
 
 [node name="Ground" type="Node2D" parent="."]
 script = ExtResource("5_ground")
@@ -56,3 +61,11 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("4_hud")
+
+[node name="Touch" type="Control" parent="HUD"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("10_touch")

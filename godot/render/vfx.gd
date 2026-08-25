@@ -13,6 +13,7 @@ var sparks: Array = []
 var debris: Array = []
 var ring: CPUParticles2D
 var motes: CPUParticles2D
+var heart: CPUParticles2D
 var _spark_i := 0
 var _debris_i := 0
 var _square: ImageTexture
@@ -28,6 +29,7 @@ func _ready() -> void:
 	for i in DEBRIS_POOL:
 		debris.append(_make_debris())
 	ring = _make_ring()
+	heart = _make_heart()
 	motes = _make_motes()
 
 
@@ -99,6 +101,26 @@ func _make_ring() -> CPUParticles2D:
 	return p
 
 
+## IND-34k: something in it is still on. the light leaving the handler rises instead
+## of scattering ... it is not debris, it is the opposite of debris.
+func _make_heart() -> CPUParticles2D:
+	var p := _base(18, 1.4)
+	p.emission_shape = CPUParticles2D.EMISSION_SHAPE_SPHERE
+	p.emission_sphere_radius = 8.0
+	p.direction = Vector2(0, -1)
+	p.spread = 24.0
+	p.gravity = Vector2(0, -26.0)
+	p.initial_velocity_min = 8.0
+	p.initial_velocity_max = 22.0
+	p.scale_amount_min = 0.7
+	p.scale_amount_max = 1.5
+	var g := Gradient.new()
+	g.colors = PackedColorArray([Palette.at(Palette.PLAYER_HI, 0.0), Palette.at(Palette.PLAYER_HI, 0.9), Palette.at(Palette.GLOW, 0.0)])
+	g.offsets = PackedFloat32Array([0.0, 0.25, 1.0])
+	p.color_ramp = g
+	return p
+
+
 func _make_motes() -> CPUParticles2D:
 	# the air is old and dry. barely-there dust riding a slow drift, always on,
 	# following the camera so the field never runs out of it.
@@ -140,6 +162,9 @@ func spend(kind: String, pos: Vector2) -> void:
 		"recall":
 			ring.position = pos
 			ring.restart()
+		"heartdrop":
+			heart.position = pos
+			heart.restart()
 
 
 func follow_camera(cam_pos: Vector2) -> void:
