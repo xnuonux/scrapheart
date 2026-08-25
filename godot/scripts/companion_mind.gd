@@ -92,7 +92,7 @@ func recompute() -> void:
 	curiosity = clampf(curiosity, 0.0, Tuning.DISPOSITION_MAX)
 
 
-func install(f, slot: int) -> bool:
+func install(f, slot: int, now := -1.0) -> bool:
 	if slot < 0 or slot >= installed.size():
 		return false
 	if installed[slot] != null:
@@ -102,6 +102,10 @@ func install(f, slot: int) -> bool:
 	if f.shape == "aux" and not is_aux_slot(slot):
 		return false
 	installed[slot] = f
+	# the scavenger floor reads install_t; a fragment without the field (a stub, a
+	# test double) simply never exposes a fresh socket. duck-typed on purpose.
+	if "install_t" in f:
+		f.install_t = now
 	recompute()
 	return true
 

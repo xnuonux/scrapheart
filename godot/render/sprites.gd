@@ -236,3 +236,113 @@ static func player(ci: CanvasItem, pos: Vector2, hurt: bool, retreating: bool, m
 		ci.draw_circle(pos, r, Palette.PLAYER_HI if hurt else Palette.PLAYER)
 	if retreating:
 		ci.draw_arc(pos, 13.0, 0.0, TAU, 32, Palette.at(Palette.LAMP, 0.5), 1.0)
+
+
+# ── THE BESTIARY (IND-34b / 34i / 34j). every silhouette answers one question:
+# what instruction is still running. read at a glance in a crowd. ────────────────
+
+## loops: stuck repeating a fragment of an action. erratic, fast, unreadable, and
+## visibly COMING APART as it moves ... it is burning out, and everyone can see it.
+static func loop_machine(ci: CanvasItem, pos: Vector2, seed_v: int, life_frac: float, heading: Vector2) -> void:
+	var t := _now()
+	var r := Rng.new(seed_v)
+	var jit := Vector2(sin(t * 23.0 + float(seed_v)) * 2.0, cos(t * 31.0) * 2.0)
+	var p := pos + jit
+	var body := Palette.MACHINE.lerp(Palette.VOID, 0.1)
+	# the body: small, wrong-angled, twitching on its heading
+	ci.draw_set_transform(p, heading.angle() + sin(t * 17.0) * 0.3, Vector2.ONE)
+	ci.draw_rect(Rect2(-6, -5, 12, 10), body)
+	# a limb stuck mid-gesture, repeating
+	_limb(ci, Vector2.ZERO, sin(t * 14.0) * 0.9 - 0.6, 10.0, 2.0, body)
+	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	# it sheds itself as it burns out: fragments of its own silhouette drifting off
+	if life_frac < 0.55:
+		var shed := (0.55 - life_frac) * 2.2
+		for k in 2:
+			var off := Vector2(sin(t * (5.0 + k * 2.3) + float(seed_v) + k) * 10.0, (k * 7.0 + t * 9.0))
+			off.y = fposmod(off.y, 16.0) - 8.0
+			ci.draw_rect(Rect2(p + off - Vector2(1, 1), Vector2(2, 2)),
+				Palette.at(Palette.MACHINE, clampf(0.5 - shed * 0.2, 0.0, 0.5)))
+	# its light stutters with the same wrongness
+	if sin(t * (9.0 + r.next() * 3.0)) > -0.3:
+		ci.draw_rect(Rect2(p.x - 1, p.y - 7, 2, 2), Palette.at(Palette.HARM, 0.7))
+
+
+## a scavenger: another assembler. ⚠ if it carries a stolen fragment, the glow is
+## VISIBLE ... you can read what it took and how much it mattered before you commit.
+static func scav(ci: CanvasItem, pos: Vector2, seed_v: int, wind: float, stolen_worn := -1.0, stolen_name := "") -> void:
+	var t := _now()
+	var r := Rng.new(seed_v)
+	var lean := wind * 3.0
+	var w := 15.0
+	var h := 11.0
+	# hunched, asymmetric ... a thing built out of whatever was lying around
+	ci.draw_rect(Rect2(pos.x - w / 2.0 + lean, pos.y - h / 2.0, w, h), Palette.MACHINE.lerp(Palette.VOID, 0.05))
+	# mismatched legs: three, different lengths, from different machines
+	for i in 3:
+		var a := (float(i) / 3.0) * TAU + r.next() * 0.8
+		_limb(ci, pos, a, 8.0 + r.next() * 7.0, 2.5, Palette.at(Palette.MACHINE_HI, 0.7))
+	ci.draw_rect(Rect2(pos.x - w / 2.0 + lean, pos.y - h / 2.0, w, 2.0), Palette.at(Palette.MACHINE_HI, 0.6))
+	# the pincer, forward, open when it is hunting
+	var grab := 0.5 + sin(t * 5.0) * 0.2 if stolen_worn < 0.0 else 0.15
+	_limb(ci, pos + Vector2(w * 0.4, 0), -0.35 + grab * 0.4, 9.0, 2.0, Palette.MACHINE_HI)
+	_limb(ci, pos + Vector2(w * 0.4, 0), 0.35 - grab * 0.4, 9.0, 2.0, Palette.MACHINE_HI)
+	# 🚨 the stolen fragment, carried EXTERNALLY, glowing with somebody's history.
+	# the brightness is how long it was loved (34i): you read it at a glance.
+	if stolen_worn >= 0.0:
+		var beat := 0.5 + sin(t / 0.9) * 0.5
+		var bright := 0.35 + stolen_worn * 0.65
+		var cp := pos + Vector2(-w * 0.55, -h * 0.4)
+		Glows.draw(ci, Palette.PLAYER_HI, cp, 16.0 + 6.0 * beat, 0.5 * bright)
+		ci.draw_rect(Rect2(cp.x - 2, cp.y - 2, 4, 4), Palette.at(Palette.PLAYER_HI, bright))
+
+
+## herders: livestock handlers, herding nothing. they will try to move YOU.
+static func herder(ci: CanvasItem, pos: Vector2, seed_v: int, heading: Vector2, charge: float) -> void:
+	var t := _now()
+	var body := Palette.MACHINE.lerp(Palette.GROUND2, 0.3)
+	var a := heading.angle() if heading != Vector2.ZERO else 0.0
+	ci.draw_set_transform(pos, a, Vector2.ONE)
+	# a low, long body with two front paddles ... a sheepdog built by committee
+	ci.draw_rect(Rect2(-9, -5, 18, 10), body)
+	ci.draw_rect(Rect2(7, -8, 4, 5), body)     # the head, raised
+	_limb(ci, Vector2(6, 0), -0.9 + sin(t * 6.0) * 0.15, 8.0, 2.0, body)
+	_limb(ci, Vector2(6, 0), 0.9 - sin(t * 6.0) * 0.15, 8.0, 2.0, body)
+	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	# the pulse telegraph: a wide arc swelling before it tries to move you
+	if charge > 0.0:
+		ci.draw_arc(pos, 30.0 + charge * 40.0, 0.0, TAU, 40, Palette.at(Palette.LAMP, 0.35 * charge), 1.5)
+	ci.draw_rect(Rect2(pos.x + 9.0, pos.y - 7.0, 2, 2), Palette.at(Palette.LAMP, 0.8))
+
+
+## pests: pest control that now classifies everything as pest. small, fast, many.
+static func pest(ci: CanvasItem, pos: Vector2, seed_v: int, t: float) -> void:
+	var r := Rng.new(seed_v)
+	var skitter := sin(t * 26.0 + float(seed_v)) * 1.2
+	var body := Palette.MACHINE.lerp(Palette.VOID, 0.2)
+	ci.draw_rect(Rect2(pos.x - 3.0, pos.y - 2.5 + skitter * 0.3, 6.0, 5.0), body)
+	# six legs, all wrong, all moving
+	for i in 3:
+		var ph := t * 24.0 + float(i) * 2.1 + float(seed_v) * 0.1
+		_limb(ci, pos, PI + 0.5 + sin(ph) * 0.5 + r.next() * 0.2, 5.0, 1.0, body)
+		_limb(ci, pos, -0.5 - sin(ph + PI) * 0.5 - r.next() * 0.2, 5.0, 1.0, body)
+	ci.draw_rect(Rect2(pos.x - 1.0, pos.y - 4.0, 2.0, 2.0), Palette.at(Palette.HARM, 0.55))
+
+
+## drays: heavy haulers. hazards by mass. they do not slow down for you.
+static func dray(ci: CanvasItem, pos: Vector2, seed_v: int) -> void:
+	var t := _now()
+	var body := Palette.MACHINE.lerp(Palette.VOID, 0.3)
+	var rumble := sin(t * 18.0) * 0.7
+	ci.draw_rect(Rect2(pos.x - 24.0, pos.y - 14.0 + rumble, 48.0, 28.0), body)
+	ci.draw_rect(Rect2(pos.x - 24.0, pos.y - 14.0 + rumble, 48.0, 4.0), Palette.at(Palette.MACHINE_HI, 0.4))
+	# enormous wheels, turning slowly
+	for k in 3:
+		var wx := pos.x - 14.0 + k * 14.0
+		ci.draw_arc(Vector2(wx, pos.y + 14.0), 6.0, 0.0, TAU, 12, Palette.at(Palette.VOID, 0.9), 3.0)
+		ci.draw_line(Vector2(wx, pos.y + 14.0),
+			Vector2(wx, pos.y + 14.0) + Vector2(cos(t * 2.0 + float(k)) * 5.0, sin(t * 2.0 + float(k)) * 5.0),
+			Palette.at(Palette.MACHINE_HI, 0.5), 1.0)
+	# two work lights, because it is doing its job
+	ci.draw_rect(Rect2(pos.x + 20.0, pos.y - 8.0 + rumble, 3.0, 3.0), Palette.at(Palette.LAMP, 0.85))
+	ci.draw_rect(Rect2(pos.x + 20.0, pos.y + 4.0 + rumble, 3.0, 3.0), Palette.at(Palette.LAMP, 0.85))

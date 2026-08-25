@@ -87,7 +87,7 @@ func _click(pos: Vector2) -> void:
 				return
 			elif _selected_pack >= 0 and _selected_pack < w.pack.size():
 				var f = w.pack[_selected_pack]
-				if w.mind.install(f, i):
+				if w.mind.install(f, i, w.t):
 					w.pack.remove_at(_selected_pack)
 					_selected_pack = -1
 				return

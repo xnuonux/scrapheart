@@ -26,13 +26,21 @@ class Threat:
 	var wind := 0.0            ## the telegraph. built to be safe around humans.
 	var striking := false
 	var alive := true
-	var kind := "runner"       ## runner | stopped | warden | caster
+	var kind := "runner"       ## runner | stopped | warden | caster | loop | scav | herder | pest | dray
 	var seed_v := 0
 	var announced := false
 	var fire_cd := 0.0
 	## IND-34l · wardens by degree. 1 is intact. 2 announced and CANNOT follow through.
+	## 3 walks a perimeter of nothing. 4 engages only what has already stopped.
 	var degree := 0
 	var rearm_at := 0.0
+	## the bestiary's extra registers
+	var life := 0.0            ## loops: they burn out on their own
+	var turn_at := 0.0         ## loops: a new heading every so often
+	var heading := Vector2.RIGHT
+	var stolen: Fragments.Frag = null   ## scavengers: the fragment they took, RUNNING in them
+	var pulse_at := 0.0        ## herders: the herding pulse timer
+	var home := Vector2.ZERO   ## wardens deg 3: the centre of their perimeter
 
 class SalvageItem:
 	var pos: Vector2
@@ -309,6 +317,21 @@ func spawn_threat() -> void:
 	# ⚠ threats are built for where the PLAYER is, not the edge they walk in from.
 	var d := Tuning.depth_at(player_pos.x)
 	var r := spawn_rng
+	# ── the bestiary table (IND-34b/34i/34j/34l). depth owns the mix: the shallows
+	# teach walking and dodging; the deep is where everything else lives. ──
+	var roll := r.next()
+	if d > 0.45 and roll < 0.10:
+		_spawn_loop(d)
+		return
+	if d > 0.30 and roll < 0.22 and mind != null:
+		_spawn_scav(d)
+		return
+	if d > 0.25 and roll < 0.30:
+		_spawn_herder(d)
+		return
+	if d > 0.20 and roll < 0.42:
+		_spawn_pests(d, 2 + int(r.next() * 2.0))
+		return
 	var edge := int(r.next() * 4.0)
 	var p: Vector2
 	match edge:
@@ -318,7 +341,7 @@ func spawn_threat() -> void:
 		_: p = Vector2(-30, r.next() * Tuning.H)
 	# casters only exist past the shallows: the first thing a player learns is walking,
 	# the second is that walking stops being enough.
-	var caster := d > 0.34 and r.next() < 0.22 + d * 0.26
+	var caster := d > 0.34 and roll < 0.22 + d * 0.26
 	var th := Threat.new()
 	th.pos = p
 	th.r = 9.0 if caster else 10.0
@@ -329,6 +352,100 @@ func spawn_threat() -> void:
 	th.seed_v = int(r.next() * 1000.0)
 	th.fire_cd = 1.2 + r.next()
 	threats.append(th)
+
+
+## IND-34b: stuck repeating a fragment of an action. erratic, fast, unreadable,
+## short-lived. 🚨 the only genuinely chaotic thing in the world ... and it burns out
+## on its own, which is the saddest possible version of an enemy.
+func _spawn_loop(d: float) -> void:
+	var r := spawn_rng
+	var th := Threat.new()
+	th.pos = _edge_point(r)
+	th.r = 8.0
+	th.hp = 14.0 + d * 10.0
+	th.max_hp = th.hp
+	th.speed = Tuning.LOOP_SPEED * (0.85 + r.next() * 0.3)
+	th.kind = "loop"
+	th.seed_v = int(r.next() * 1000.0)
+	th.life = Tuning.LOOP_LIFE * (0.7 + r.next() * 0.6)
+	th.heading = Vector2.RIGHT.rotated(r.next() * TAU)
+	th.turn_at = 0.0
+	threats.append(th)
+
+
+## IND-34b/34i: other assemblers. it watches, it closes when you are busy, it takes a
+## fragment ... and it RUNS it: its behaviour changes to reflect what it stole. 🚨 the
+## floor holds absolutely: only a socket filled within SCAV_WINDOW can be taken, so a
+## settled companion is never at risk.
+func _spawn_scav(d: float) -> void:
+	var r := spawn_rng
+	var th := Threat.new()
+	th.pos = _edge_point(r)
+	th.r = 11.0
+	th.hp = 40.0 + d * 30.0
+	th.max_hp = th.hp
+	th.speed = Tuning.SCAV_SPEED
+	th.kind = "scav"
+	th.seed_v = int(r.next() * 1000.0)
+	threats.append(th)
+
+
+## IND-34j: livestock handlers moving in patterns around nothing. they will try to
+## move YOU, which is not an attack and is very nearly worse.
+func _spawn_herder(d: float) -> void:
+	var r := spawn_rng
+	var th := Threat.new()
+	th.pos = _edge_point(r)
+	th.r = 14.0
+	th.hp = 46.0 + d * 20.0
+	th.max_hp = th.hp
+	th.speed = 0.8 + r.next() * 0.3
+	th.kind = "herder"
+	th.seed_v = int(r.next() * 1000.0)
+	th.pulse_at = t + 2.0 + r.next() * 3.0
+	threats.append(th)
+
+
+## IND-34j: agricultural pest control that now classifies everything as pest.
+## small, fast, many.
+func _spawn_pests(d: float, n: int) -> void:
+	var r := spawn_rng
+	var base := _edge_point(r)
+	for i in n:
+		var th := Threat.new()
+		th.pos = base + Vector2((r.next() - 0.5) * 90.0, (r.next() - 0.5) * 90.0)
+		th.r = 6.0
+		th.hp = 10.0 + d * 6.0
+		th.max_hp = th.hp
+		th.speed = Tuning.PEST_SPEED * (0.85 + r.next() * 0.3)
+		th.kind = "pest"
+		th.seed_v = int(r.next() * 1000.0)
+		threats.append(th)
+
+
+## IND-34j: heavy haulers. hazards by mass rather than aggression ... they walk their
+## line, and you are standing in it or you are not.
+func spawn_dray(line_y: float) -> void:
+	var r := spawn_rng
+	var th := Threat.new()
+	th.pos = Vector2(-60.0, line_y)
+	th.home = Vector2(Tuning.W + 60.0, line_y)
+	th.r = 22.0
+	th.hp = 220.0
+	th.max_hp = 220.0
+	th.speed = Tuning.DRAY_SPEED
+	th.kind = "dray"
+	th.seed_v = int(r.next() * 1000.0)
+	threats.append(th)
+
+
+func _edge_point(r: Lcg) -> Vector2:
+	var edge := int(r.next() * 4.0)
+	match edge:
+		0: return Vector2(r.next() * Tuning.W, -30)
+		1: return Vector2(Tuning.W + 30, r.next() * Tuning.H)
+		2: return Vector2(r.next() * Tuning.W, Tuning.H + 30)
+		_: return Vector2(-30, r.next() * Tuning.H)
 
 
 func spawn_handler() -> void:
@@ -515,7 +632,7 @@ func take_chassis() -> void:
 	chassis_taken = true
 	mind = CompanionMind.new()
 	mind.installed = [null, null, null]
-	mind.install(Fragments.make("gait"), 0)   # it can move. that is all, at first.
+	mind.install(Fragments.make("gait"), 0, t)   # it can move. that is all, at first.
 	mind.recompute()
 	companion_pos = chassis_pos + Vector2(0, 20)
 	companion_prev = companion_pos
@@ -876,6 +993,41 @@ func tick(dt: float, mv: Vector2, firing: bool, aim: Vector2, recalling := false
 				th3.rearm_at = t + 8.0
 			continue
 
+		# IND-34l degree 3: it walks a perimeter around ground that no longer contains
+		# anything. precisely. on schedule. it will never notice you.
+		if warden and th3.degree == 3:
+			th3.wind = 0.0
+			th3.striking = false
+			var orb: Vector2 = th3.pos - th3.home
+			if orb.length() < 8.0:
+				th3.heading = th3.heading.rotated(PI / 2.0)   # the corner: turn, keep walking
+			th3.pos += th3.heading * 0.42 * 60.0 * dt
+			if orb.length() > Tuning.WARDEN_PERIMETER_R:
+				th3.pos = th3.home + orb.normalized() * Tuning.WARDEN_PERIMETER_R
+				th3.heading = th3.heading.rotated(PI / 2.0)
+			continue
+
+		# IND-34l degree 4: inverted targeting. it engages only what has already
+		# stopped. you will find it methodically destroying something that was
+		# destroyed years ago, and it will not stop, and it will not notice you.
+		if warden and th3.degree == 4:
+			var corpse = null
+			for th4 in threats:
+				if th4 != th3 and not th4.alive and th4.pos.distance_to(th3.pos) < 500.0:
+					corpse = th4
+					break
+			if corpse != null:
+				th3.pos += (corpse.pos - th3.pos).normalized() * 0.3 * 60.0 * dt
+				th3.wind = minf(1.0, th3.wind + dt)
+				if th3.wind > 1.5:
+					th3.wind = 0.0
+					fx("hit", corpse.pos)
+			else:
+				# nothing stopped nearby: it stands, waiting for something to be dead
+				th3.wind = 0.0
+				th3.striking = false
+			continue
+
 		# a warden's only surviving instruction is ENGAGE HOSTILES, with no definition
 		# of hostile left. runners ignore the handler ... it has to be good company,
 		# not an escort mission.
@@ -923,6 +1075,128 @@ func tick(dt: float, mv: Vector2, firing: bool, aim: Vector2, recalling := false
 				cb.from = "threat"
 				bullets.append(cb)
 				cue("fire")
+			continue
+
+		# ── the bestiary. each one a different surviving instruction (IND-34b). ──
+		if th3.kind == "loop":
+			# stuck repeating a fragment of an action. a new heading every so often,
+			# contact damage, and it BURNS OUT ... life runs down and it stops.
+			th3.life -= dt
+			if th3.life <= 0.0:
+				th3.alive = false
+				fx("destroy", th3.pos, { "r": 6.0, "warden": false })
+				cue("destroy")
+				continue
+			if t > th3.turn_at:
+				th3.turn_at = t + Tuning.LOOP_TURN * (0.5 + randf())
+				th3.heading = th3.heading.rotated((randf() - 0.5) * 2.6)
+			th3.pos += th3.heading * th3.speed * 60.0 * dt
+			th3.pos = th3.pos.clamp(Vector2(10, 10), Vector2(Tuning.W - 10, Tuning.H - 10))
+			if th3.pos.distance_to(player_pos) < th3.r + player_r:
+				hurt_player(Tuning.LOOP_DMG, 50)
+			continue
+
+		if th3.kind == "scav":
+			# other assemblers. it stalks, it closes when you are busy or hurt, and
+			# it takes ... not damage. a fragment. and then it runs it.
+			var want_steal: bool = mind != null
+			if want_steal:
+				# the floor: only a recently-filled socket is exposed
+				var newest := -1
+				var newest_at := -INF
+				for i in mind.installed.size():
+					var f2 = mind.installed[i]
+					if f2 != null and f2.install_t >= 0.0 and t - f2.install_t < Tuning.SCAV_WINDOW:
+						if f2.install_t > newest_at:
+							newest_at = f2.install_t
+							newest = i
+				if newest < 0:
+					want_steal = false
+				elif th3.stolen == null:
+					# approach the PLAYER (the companion is near them), flee with it otherwise
+					var to_p: Vector2 = player_pos - th3.pos
+					var dd := to_p.length()
+					if dd > Tuning.SCAV_STEAL_REACH:
+						th3.pos += to_p / dd * th3.speed * 60.0 * dt
+					else:
+						# the take. the socket is emptied, the mind recomputes, and the
+						# scavenger visibly carries what it stole.
+						var taken: Fragments.Frag = mind.installed[newest]
+						mind.installed[newest] = null
+						mind.recompute()
+						th3.stolen = taken
+						th3.speed = Tuning.SCAV_FLEE_SPEED
+						log_line("it took %s." % taken.name)
+						cue("hurt")
+						fx("playerhurt", player_pos)
+						continue
+				else:
+					# flee with the prize, toward the nearest edge
+					var flee: Vector2 = th3.pos
+					if th3.pos.x < Tuning.W / 2.0:
+						flee = Vector2(-40.0, th3.pos.y)
+					else:
+						flee = Vector2(Tuning.W + 40.0, th3.pos.y)
+					var away: Vector2 = (flee - th3.pos).normalized()
+					th3.pos += away * th3.speed * 60.0 * dt
+					if th3.pos.x < -30.0 or th3.pos.x > Tuning.W + 30.0:
+						# it is gone, and it took the piece. the record stands.
+						th3.alive = false
+						continue
+			else:
+				# no exposed socket: it fights like a cautious runner
+				var to_p2: Vector2 = player_pos - th3.pos
+				var dd2 := to_p2.length()
+				if dd2 > 60.0:
+					th3.pos += to_p2 / dd2 * th3.speed * 60.0 * dt
+				else:
+					th3.wind += dt
+					th3.striking = th3.wind > 0.6
+					if th3.striking and th3.wind > 1.0:
+						th3.wind = 0.0
+						if th3.pos.distance_to(player_pos) < 64.0:
+							hurt_player(8.0, 60)
+			continue
+
+		if th3.kind == "herder":
+			# it moves in patterns around nothing, and every so often it tries to move
+			# YOU. not an attack ... a nudge at herd speed that relocates your feet.
+			th3.pos += th3.heading * th3.speed * 60.0 * dt
+			if th3.heading == Vector2.ZERO or t > th3.turn_at:
+				th3.turn_at = t + 3.0 + randf() * 3.0
+				th3.heading = Vector2.RIGHT.rotated(randf() * TAU)
+			if t > th3.pulse_at:
+				th3.pulse_at = t + Tuning.HERDER_PULSE_EVERY
+				if th3.pos.distance_to(player_pos) < Tuning.HERDER_RANGE:
+					var push_dir: Vector2 = (player_pos - th3.pos).normalized()
+					player_pos += push_dir * Tuning.HERDER_PUSH * 0.16
+					player_prev = player_pos
+					cue("hurt")
+					fx("hit", player_pos)
+			continue
+
+		if th3.kind == "pest":
+			# everything is pest. small, fast, many, and they swarm.
+			var to_p3: Vector2 = player_pos - th3.pos
+			var dd3 := to_p3.length()
+			if dd3 > 2.0:
+				th3.pos += to_p3 / dd3 * th3.speed * 60.0 * dt
+			if dd3 < th3.r + player_r + 2.0 and t > th3.pulse_at:
+				th3.pulse_at = t + 0.8
+				hurt_player(Tuning.PEST_DMG, 40)
+			continue
+
+		if th3.kind == "dray":
+			# it walks its line. hazards by mass, not malice: contact hurts and SHOVES.
+			th3.pos.x += th3.speed * 60.0 * dt
+			if th3.pos.x > Tuning.W + 80.0:
+				th3.alive = false
+				continue
+			if th3.pos.distance_to(player_pos) < th3.r + player_r:
+				hurt_player(Tuning.DRAY_DMG, 80)
+				var shove: Vector2 = (player_pos - th3.pos).normalized() * Tuning.DRAY_KNOCK * 0.2
+				player_pos += shove
+				player_prev = player_pos
 			continue
 
 		var reach := 92.0 if warden else 56.0

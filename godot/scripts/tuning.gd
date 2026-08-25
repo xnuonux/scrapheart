@@ -147,3 +147,31 @@ const MARK_REACH_MULT: float = 4.5
 ## idea is how a game says "it is hurt" about a machine that still looks fine.
 const HURT_THRESHOLD: float = 0.50
 const HURT_RESET: float = 0.85
+
+# ── THE BESTIARY (IND-34b / 34i / 34j / 34l) ────────────────────────────────────
+## loops: stuck repeating a fragment of an action. erratic, fast, short-lived, and
+## there should not be many. it burns out on its own ... nothing needed killing it.
+const LOOP_LIFE: float = 10.0
+const LOOP_SPEED: float = 2.1
+const LOOP_TURN: float = 0.7              ## a new random heading every this many seconds
+const LOOP_DMG: float = 6.0
+## scavengers: other assemblers. they take a fragment ... not damage it, TAKE it ...
+## and it runs in them, visibly. 🚨 the floor (34b/34q): a settled companion is never
+## at risk. they can only steal a socket filled recently.
+const SCAV_STALK: float = 300.0           ## it watches from here
+const SCAV_STEAL_REACH: float = 34.0
+const SCAV_WINDOW: float = 90.0           ## a socket filled within this can be taken
+const SCAV_FLEE_SPEED: float = 2.35
+const SCAV_SPEED: float = 1.15
+## beasts: built in animal shapes, still doing animal-shaped things for no reason.
+const HERDER_PULSE_EVERY: float = 6.0
+const HERDER_PUSH: float = 620.0          ## px/s of displacement for ~0.15s ... not damage
+const HERDER_RANGE: float = 150.0
+const PEST_DMG: float = 5.0
+const PEST_SPEED: float = 1.9
+const DRAY_SPEED: float = 0.55
+const DRAY_DMG: float = 24.0
+const DRAY_KNOCK: float = 150.0
+## degrees (34l): the rule stays absolute; what varies is whether the machine can
+## still execute it. intact is the default. degrees are FOUND, not encountered.
+const WARDEN_PERIMETER_R: float = 130.0

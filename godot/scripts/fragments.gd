@@ -23,6 +23,10 @@ class Frag:
 	var degradation := 0.0
 	## shaped sockets: "" fits anywhere, "aux" fits ONLY an aux slot
 	var shape := ""
+	## when it was installed (world time). 🚨 the scavenger floor reads this: only a
+	## recently-filled socket can be stolen, so a settled companion is never at risk.
+	## -1 = not installed.
+	var install_t := -1.0
 
 
 const CATALOGUE := {

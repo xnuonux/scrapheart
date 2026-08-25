@@ -179,6 +179,25 @@ func _draw() -> void:
 			# IND-34l: drawn as a wreck ... the only tell is one lit light.
 			Sprites.wreck(self, th.pos, th.r * 1.5, th.seed_v, true)
 			continue
+		if th.kind == "loop":
+			Sprites.loop_machine(self, th.pos, th.seed_v, th.life / maxf(0.01, Tuning.LOOP_LIFE), th.heading)
+			continue
+		if th.kind == "scav":
+			var sw := -1.0
+			if th.stolen != null:
+				sw = th.stolen.worn
+			Sprites.scav(self, th.pos, th.seed_v, th.wind, sw)
+			continue
+		if th.kind == "herder":
+			var charge: float = clampf(1.0 - (th.pulse_at - w.t) / Tuning.HERDER_PULSE_EVERY, 0.0, 1.0)
+			Sprites.herder(self, th.pos, th.seed_v, th.heading, charge)
+			continue
+		if th.kind == "pest":
+			Sprites.pest(self, th.pos, th.seed_v, t)
+			continue
+		if th.kind == "dray":
+			Sprites.dray(self, th.pos, th.seed_v)
+			continue
 		match th.kind:
 			"warden":
 				Sprites.warden(self, th.pos, th.r, th.wind)

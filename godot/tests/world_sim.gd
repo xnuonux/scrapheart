@@ -22,6 +22,7 @@ func _init() -> void:
 	var dt := 1.0 / 60.0
 
 	# ── 1 · the opening stands a machine ──
+	print("  ... [1] opening")
 	var w := GameWorld.new()
 	w.player_pos = w.chassis_pos + Vector2(10, 0)
 	w.tick(dt, Vector2.ZERO, false, Vector2.ZERO)
@@ -30,6 +31,7 @@ func _init() -> void:
 		and w.mind.live_fragments()[0].id == "gait")
 
 	# ── 2 · heat is a rhythm: lock lands where the web build measured it (1.97s) ──
+	print("  ... [2] heat")
 	var lock_at := -1.0
 	var aim: Vector2 = w.player_pos + Vector2(100, 0)
 	for i in 300:
@@ -46,6 +48,7 @@ func _init() -> void:
 	check("the lock lasts the designed 2s", lock_dur > 1.7 and lock_dur < 2.4, "%.2fs" % lock_dur)
 
 	# ── 3 · the immortal-machine class stays dead, in this engine too ──
+	print("  ... [3] damage door")
 	var bw = null
 	for th in w.threats:
 		if th.kind == "warden" and th.degree == 2:
@@ -69,6 +72,7 @@ func _init() -> void:
 		check("and drops what a warden drops", selfpres)
 
 	# ── 4 · the recall banks; that is the entire point of the button ──
+	print("  ... [4] recall")
 	w.pack.append(Fragments.make("ward"))
 	w.pack.append(Fragments.make("inquiry"))
 	w.player_pos = Vector2(1400, 600)
@@ -96,6 +100,7 @@ func _init() -> void:
 	check("everything you built survived", w.mind != null and w.mind.live_fragments().size() == frags_before)
 
 	# ── 6 · the damage door: a full minute of open combat, invariant sampled every tick ──
+	print("  ... [6] combat minute")
 	var w2 := GameWorld.new()
 	w2.player_pos = Vector2(1200, 600)   # deep enough for casters to exist
 	var violations := 0
@@ -108,6 +113,66 @@ func _init() -> void:
 		if w2.run > 1:
 			break   # dying in the deep is the calibration working, not a failure
 	check("a minute of combat, zero dead-but-alive machines", violations == 0, "%d violations" % violations)
+
+	# ── 7 · the bestiary (IND-34b/34i/34j/34l), each claim direct ──
+	print("  ... [7] bestiary")
+	var w3 := GameWorld.new()
+	# loops burn out on their own
+	w3._spawn_loop(0.6)
+	var lp = w3.threats[w3.threats.size() - 1]
+	var burned := false
+	for i in int(Tuning.LOOP_LIFE * 2.0 * 60.0):
+		w3.tick(dt, Vector2.ZERO, false, Vector2.ZERO)
+		if not lp.alive:
+			burned = true
+			break
+	check("a loop burns out on its own", burned, "nothing needed killing it")
+
+	# 🚨 the scavenger floor: a SETTLED companion is never at risk
+	print("  ... [7b] scav floor")
+	var w4 := GameWorld.new()
+	w4.player_pos = w4.chassis_pos + Vector2(10, 0)
+	w4.tick(dt, Vector2.ZERO, false, Vector2.ZERO)   # take the chassis
+	check("[pre] w4 companion stands", w4.mind != null)
+	w4.mind.install(Fragments.make("ward"), 1, 0.0)  # installed at t=0, long settled
+	w4.t = Tuning.SCAV_WINDOW + 10.0                 # the window has closed
+	var before: int = w4.mind.live_fragments().size()
+	var scav_taken := false
+	for i in 60 * 20:
+		w4._spawn_scav(0.6)
+		w4.tick(dt, Vector2.ZERO, false, Vector2.ZERO)
+		w4.player_pos = Vector2(700, 600)
+		if w4.mind == null or w4.mind.live_fragments().size() < before:
+			scav_taken = true
+			break
+	check("the scavenger floor holds: settled sockets are safe", not scav_taken,
+		"20s of scavengers against a settled build")
+
+	# ... and a FRESH socket can be taken, and it runs in them
+	print("  ... [7c] scav steal")
+	var w5 := GameWorld.new()
+	w5.player_pos = w5.chassis_pos + Vector2(10, 0)
+	w5.tick(dt, Vector2.ZERO, false, Vector2.ZERO)
+	check("[pre] w5 companion stands", w5.mind != null)
+	var fresh := Fragments.make("inquiry")
+	fresh.install_t = w5.t
+	w5.mind.installed[1] = fresh
+	w5.mind.recompute()
+	var stolen_frag = null
+	for i in 60 * 40:
+		if i % 90 == 0:
+			w5._spawn_scav(0.6)
+		w5.tick(dt, Vector2.ZERO, false, Vector2.ZERO)
+		w5.player_pos = Vector2(700, 600)
+		if w5.mind != null and w5.mind.installed[1] == null:
+			for th in w5.threats:
+				if th.kind == "scav" and th.stolen != null:
+					stolen_frag = th.stolen
+			break
+		if w5.t > 300.0:
+			break
+	check("a fresh fragment CAN be taken", stolen_frag != null,
+		"it runs in them, visibly, and it flees with the prize")
 
 	print("")
 	if fails == 0:
