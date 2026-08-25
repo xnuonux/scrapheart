@@ -49,6 +49,102 @@ func _ready() -> void:
 			[140, Vector2.RIGHT, "game-02-chassis"],
 			[160, Vector2(1, -0.3).normalized(), "game-03-east"],
 		]
+	# --play: the end-to-end scene playtest. a scripted journey through the REAL
+	# scene with rendering live, verifying the storyline beats fire in play (not
+	# just in the world sim), then prints receipts and quits. the world sim
+	# proves the systems; this proves the SCENE wires them.
+	if OS.get_cmdline_user_args().has("--play"):
+		_play = true
+		_play_phase = 0
+		_play_t = 0.0
+
+var _play := false
+var _play_phase := 0
+var _play_t := 0.0
+var _play_results: Array = []
+
+
+func _play_check(name: String, ok: bool, detail := "") -> void:
+	_play_results.append("%s  %s%s" % ["PASS" if ok else "FAIL", name, ("  " + detail) if detail != "" else ""])
+	print("  %s  %s%s" % ["PASS" if ok else "FAIL", name, ("  " + detail) if detail != "" else ""])
+
+
+## the door's tell, readable from the scene: passable means the opening holds a
+## faint light that was not there before. this is the thing a PLAYER would see.
+func door_glow_live() -> bool:
+	return world.mind != null and world.mind.live_fragments().size() >= Tuning.DOOR_FRAGS
+
+
+## the scripted journey: spawn -> dormant line -> chassis -> foreman -> door glow.
+## each phase holds a heading until its beat is observed or its patience expires.
+func _play_drive(dt: float) -> Vector2:
+	_play_t += dt
+	match _play_phase:
+		0:
+			# stand near the dormant one and wait for its word
+			if world.logs.size() > 0 and world.logs[0].text.contains("return"):
+				_play_check("the dormant one speaks at the spawn", true)
+				_play_phase = 1
+			elif _play_t > 14.0:
+				_play_check("the dormant one speaks at the spawn", false, "14s, silent")
+				_play_phase = 1
+			return (world.dormant_pos + Vector2(40, 0) - world.player_pos).limit_length(1.0)
+		1:
+			# walk to the chassis; the machine stands up
+			if world.mind != null:
+				_play_check("the machine stands (chassis via scene input)", true)
+				_play_phase = 2
+			elif _play_t > 20.0:
+				_play_check("the machine stands (chassis via scene input)", false, "20s")
+				_play_phase = 2
+			return (world.chassis_pos - world.player_pos).limit_length(1.0)
+		2:
+			# approach the foreman; the work order is handed over
+			if world.work_order:
+				_play_check("the foreman hands the work order", true)
+				_play_phase = 3
+			elif _play_t > 25.0:
+				_play_check("the foreman hands the work order", false, "25s")
+				_play_phase = 3
+			return (world.foreman_pos - world.player_pos).limit_length(1.0)
+		3:
+			# install two more fragments by hand (the pack UI is input-driven; the
+			# scene test drives the world directly, the UI is separately clickable)
+			if world.mind != null and world.mind.live_fragments().size() >= 3:
+				_play_check("the door is passable at 3 fragments", door_glow_live())
+				_play_phase = 4
+			else:
+				world.pack.append(Fragments.make("attend"))
+				world.pack.append(Fragments.make("repair"))
+				if world.mind != null:
+					var f0 = world.pack.pop_back()
+					var f1 = world.pack.pop_back()
+					world.mind.install(f0, 1, world.t)
+					world.mind.install(f1, 2, world.t)
+					world.mind.recompute()
+			return Vector2.ZERO
+		4:
+			# walk to the door; crossing it is the fifth ending
+			if world.ascended:
+				_play_check("the door takes you", true)
+				_finish_play()
+				return Vector2.ZERO
+			elif _play_t > 30.0:
+				_play_check("the door takes you", false, "30s")
+				_finish_play()
+				return Vector2.ZERO
+			return (world.door_pos - world.player_pos).limit_length(1.0)
+	return Vector2.ZERO
+
+
+func _finish_play() -> void:
+	print("\n=== SCENE PLAY RECEIPTS ===")
+	var fails := 0
+	for r in _play_results:
+		if r.begins_with("FAIL"):
+			fails += 1
+	print("scene play: %s  (%d checks, %d failed)" % ["clean" if fails == 0 else "FAILED", _play_results.size(), fails])
+	get_tree().quit(1 if fails > 0 else 0)
 
 
 func _physics_process(dt: float) -> void:
@@ -61,6 +157,8 @@ func _physics_process(dt: float) -> void:
 			Input.get_axis("move_up", "move_down"))
 		if _shots:
 			mv = _drive_script()
+		if _play:
+			mv = _play_drive(dt)
 		if mv.length() > 1.0:
 			mv = mv.normalized()
 

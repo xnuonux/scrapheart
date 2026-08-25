@@ -285,6 +285,22 @@ func _init() -> void:
 		w10.tick(dt, Vector2.ZERO, false, Vector2.ZERO)
 	check("a dull companion walks past everything buried", not b1.done)
 
+	# ── 10 · the commissary's fixed inventory (34f: it has what it has) ──
+	print("  ... [10] commissary")
+	var w11 := GameWorld.new()
+	w11.player_pos = w11.chassis_pos + Vector2(10, 0)
+	w11.tick(dt, Vector2.ZERO, false, Vector2.ZERO)
+	var got_frag := false
+	for i in 8:
+		w11.pack.append(Fragments.make("gait"))   # feed it salvage
+		w11.player_pos = w11.commissary_pos + Vector2(5, 0)
+		w11.tick(dt, Vector2.ZERO, false, Vector2.ZERO)
+		for f in w11.pack:
+			if f.id == "mark":
+				got_frag = true
+	check("the shelf holds two bars and one fragment, then nothing", got_frag and w11.commissary_stock == 0 and not w11.commissary_frag,
+		"it will never restock; it keeps saying the line anyway")
+
 	print("")
 	if fails == 0:
 		print("world sim: clean  the ported world holds every claim.")

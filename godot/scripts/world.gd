@@ -193,9 +193,12 @@ var foreman_finished := false           ## it logs its last line and powers down
 
 ## the commissary (34f): fixed inventory, decades old, priced in a currency that
 ## stopped meaning anything. it accepts salvage at a rate it invented. the rate
-## is bad, and it is not negotiable.
+## is bad, and it is not negotiable. ⚠ machine inventories never restock and never
+## change: it has what it has, and when the shelf is empty it is empty.
 var commissary_pos := Vector2(420.0, 1020.0)
 var scrip := 0                          ## it calls the salvage you feed it "scrip"
+var commissary_stock := 2               ## two ration bars ... and one thing on the shelf
+var commissary_frag := true             ## the last fragment it will ever sell
 
 ## 🚨 THE DOOR (34r). the landmark's threshold. passable when the build is real
 ## enough to survive getting there. it never asks. walking in ends the run you
@@ -1485,14 +1488,23 @@ func _story(dt: float) -> void:
 			salvage.append(sv2)
 
 	# the commissary (34f). walk in with salvage; it invents its own exchange rate.
+	# ⚠ fixed inventory: two ration bars, then one fragment off the shelf, then it
+	# has nothing left and keeps saying the line anyway, forever.
 	if player_pos.distance_to(commissary_pos) < 50.0 and pack.size() > 0:
 		var f3 = pack.pop_back()
 		scrip += 1
 		log_line("COMMISSARY 4: ... ACCEPTED. THANK YOU FOR YOUR SERVICE.")
 		cue("pickup")
-		# what scrip buys: it has what it has. a ration bar is a repair, once.
-		if scrip % 2 == 0:
+		if commissary_stock > 0:
+			commissary_stock -= 1
 			player_hp = minf(Tuning.PLAYER_HP, player_hp + 25.0)
+		elif commissary_frag and scrip >= 3:
+			# the last thing on the shelf. it has been holding it for forty years.
+			commissary_frag = false
+			var f4 := Fragments.make("mark", 0.8)
+			pack.append(f4)
+			log_line("recovered: %s" % f4.name)
+			log_line("COMMISSARY 4: INVENTORY DEPLETED. THANK YOU FOR YOUR PATRONAGE.")
 
 	# the still (34b): walk among the rows. the fragments are whole. taking one is
 	# the moral centre of the world, and the game never says one word about it.

@@ -95,7 +95,44 @@ Two you should read before touching anything:
 
 ---
 
-## what is left
+## 🚨 THE GODOT PORT IS THE GAME NOW (2026-08-25, beast-PC autonomous arc)
+
+Dom pointed production at the beast PC and said make it a full-fledged indie game. The
+port happened in measured phases, each with receipts, each pushed:
+
+| phase | what landed | receipt |
+|---|---|---|
+| renderer foundation | `godot/render/` ... palette (the one place a hex may live), sprites on the web build's LCG, glows rasterised-once, vignette as a fragment shader, `field.tscn` | frames read |
+| the world port | `godot/scripts/world.gd` ... the whole reference world, **both damage doors born singular** (the immortal class cannot exist here) | `tests/world_sim.gd`, 40+ claims clean |
+| the art pass | shader floor (cracked earth, colder east), pooled 2D lights, soft shadows, motivated particles, film-grain haze, procedural sfx (10 voices, pitch-jittered, M mutes), JetBrains Mono (OFL, vendored) | parity clean |
+| IND-34o registers | far colossi beyond the world edges at 35% parallax; companion legs derived from installed fragments; runner gait; warden sway; handler antenna + blink; touch layer (web scheme exactly) | frames read, 3 parallax iterations |
+| the bestiary | loops (burn out, shedding themselves) · scavengers (TAKE a fragment, run it glowing, floor-proven both ways) · herders · pests · drays · warden degrees 3+4 | world sim + soak |
+| the storyline | the dormant one that says "return." · repair unit free forever · foreman whose manifest ENDS it · commissary's invented rate · THE STILL in rows, whole fragments, uncommented · the waiting dog (34l #2) · buried salvage found only by curious companions · THE DOOR, passable at 3 fragments, last line = first line spoken back | 8+8 storyline claims in the sim |
+| feel + ship | pickup magnetism (radius stays honest), camera lookahead, contact damage on a rhythm, **`dist-scrapheart/SCRAPHEART.exe` (105MB, boots clean)** | `tests/soak_deep.gd`: a stationary bot deep dies exactly once in 90s, worst hit 21.9 |
+
+**Run it:** `godot --path godot` (main scene is the game) · `-- --shots` (capture frames) ·
+`-- --play` (the end-to-end scene playtest: 5 checks, the whole first act + the fifth ending).
+**Tests:** `world_sim.gd` (the world) · `parity.gd` (the mind vs the measurements) ·
+`soak_deep.gd` (the balance).
+
+### what remains, honestly
+
+1. **The gate.** Ten players, one hour, seven name the companion unprompted. The web build
+   (`SCRAPHEART.html`) is still the cheapest gate instrument and the gate is platform-independent.
+2. **The hand-crafted art pass is real art time.** Everything procedural now satisfies the
+   silhouette language; IND-34o's "fluid, hand-crafted" register for handler/warden/world is an
+   artist's job layered on a working base.
+3. **The voice** (34q): ship SILENT first. The methodological warning is absolute ... a talking
+   companion inflates the naming gate. Run the gate on the silent build.
+4. **Lending P1** (async, REST, bot borrowers honestly labelled). The guardrail: dispositions
+   never change in another player's world.
+5. **Android export** needs the android templates + SDK; the preset story for Windows is in
+   `export_presets.cfg` (custom_template points at the extracted 4.7.1 tpz; move to AppData when
+   the shell allows).
+
+---
+
+## what is left (web-build era, preserved)
 
 **Everything buildable from the spec is built.** What remains needs a human, a phone, or
 ten strangers:
